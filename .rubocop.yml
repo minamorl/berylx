@@ -7,9 +7,25 @@ AllCops:
   Exclude:
     - vendor/**/*
     - tmp/**/*
+    - examples/**/*
 
 Style/Documentation:
   Enabled: false
+
+Naming/MethodName:
+  AllowedPatterns:
+    - \A[A-Z][A-Za-z0-9_]*\z
+
+Style/ArgumentsForwarding:
+  Enabled: false
+
+Naming/BlockForwarding:
+  Enabled: false
+
+Metrics/AbcSize:
+  Max: 20
+  Exclude:
+    - test/**/*
 
 Metrics/MethodLength:
   Max: 20
@@ -20,5 +36,9 @@ Metrics/BlockLength:
     - "*.gemspec"
 
 Metrics/ClassLength:
+  Exclude:
+    - test/**/*
+
+Minitest/MultipleAssertions:
   Exclude:
     - test/**/*

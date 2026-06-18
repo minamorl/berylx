@@ -68,11 +68,10 @@ module Beryl
       when Hash
         current.merge(key => assoc_in(current.fetch(key, nil), rest, next_value))
       else
-        if current.respond_to?(:with)
-          current.with(key => assoc_in(current.public_send(key), rest, next_value))
-        else
-          raise TypeError, "cannot update #{current.class} at #{key.inspect}"
-        end
+        raise TypeError, "cannot update #{current.class} at #{key.inspect}" unless current.respond_to?(:with)
+
+        current.with(key => assoc_in(current.public_send(key), rest, next_value))
+
       end
     end
   end

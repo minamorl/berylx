@@ -45,8 +45,8 @@ module Beryl
       Parallel.new([self, other])
     end
 
-    def rescue_with(handler = nil, name = nil, &block)
-      Sequence.build_rescue(self, handler, name, &block)
+    def rescue_with(handler = nil, name = nil, &)
+      Sequence.build_rescue(self, handler, name, &)
     end
 
     def nodes

@@ -10,13 +10,13 @@ module Beryl
     end
 
     def initialize(name, block, else_branch)
-      raise ArgumentError, "When requires a predicate block" unless block || else_branch
+      raise ArgumentError, 'When requires a predicate block' unless block || else_branch
 
       @predicate = Predicate.new(name.to_sym, block, else_branch)
     end
 
-    def >>(body)
-      Branch.new([BranchArm.new(@predicate, body)])
+    def >>(other)
+      Branch.new([BranchArm.new(@predicate, other)])
     end
   end
 
@@ -41,8 +41,8 @@ module Beryl
       Parallel.new([self, other])
     end
 
-    def rescue_with(handler = nil, name = nil, &block)
-      Sequence.build_rescue(self, handler, name, &block)
+    def rescue_with(handler = nil, name = nil, &)
+      Sequence.build_rescue(self, handler, name, &)
     end
 
     def call(focus)

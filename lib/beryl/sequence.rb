@@ -16,14 +16,14 @@ module Beryl
       Parallel.new([self, other])
     end
 
-    def rescue_with(handler = nil, name = nil, &block)
-      self.class.build_rescue(self, handler, name, &block)
+    def rescue_with(handler = nil, name = nil, &)
+      self.class.build_rescue(self, handler, name, &)
     end
 
     def self.build_rescue(body, handler = nil, name = nil, &block)
       rescue_handler = block ? RescueBlock.new(name || :rescue, block) : handler
 
-      raise ArgumentError, "rescue_with requires a task or block" unless rescue_handler
+      raise ArgumentError, 'rescue_with requires a task or block' unless rescue_handler
 
       Rescue.new(body, rescue_handler)
     end

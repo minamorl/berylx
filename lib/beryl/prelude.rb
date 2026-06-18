@@ -6,6 +6,14 @@ module Beryl
       Beryl::Fn[*args, &block]
     end
 
+    def State(value = {})
+      Beryl::State[value]
+    end
+
+    def task(name, &block)
+      Beryl.task(name, &block)
+    end
+
     def Ok(value)
       Beryl::Ok.new(value)
     end

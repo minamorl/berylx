@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require "minitest/autorun"
-require "beryl"
+require 'minitest/autorun'
+require 'beryl'
 
 class BerylTest < Minitest::Test
   def test_compose
@@ -14,17 +14,47 @@ class BerylTest < Minitest::Test
   def test_result_map
     result = Beryl::Result.map(Beryl::Result.ok(10)) { _1 + 1 }
 
+    assert_equal Beryl::Ok.new(10), Beryl::Result.ok(10)
     assert_equal Beryl::Ok.new(11), result
   end
 
-  def test_task_sequence_over_focus
+  def test_flow_starts_from_lay_focus
+    flow = Beryl::Flow[Beryl::Lay[name: '  mina  ']]
+
+    assert_instance_of Beryl::Flow, flow
+    assert_equal({ name: '  mina  ' }, flow.focus.to_h)
+  end
+
+  def test_flow_call_runs_node_from_its_lay_origin
     strip = Beryl::Task[:strip] { |root| root[:name].update(&:strip) }
     greet = Beryl::Task[:greet] { |root| root[:greeting].set("hello #{root[:name].get}") }
 
-    result = (strip >> greet).call(Beryl::Focus[name: "  mina  "])
+    result = Beryl::Flow[Beryl::Lay[name: '  mina  ']].call(strip >> greet)
 
     assert_instance_of Beryl::Ok, result
-    assert_equal({ name: "mina", greeting: "hello mina" }, result.focus.to_h)
+    assert_equal({ name: 'mina', greeting: 'hello mina' }, result.focus.to_h)
+  end
+
+  def test_state_pipe_task_syntax_lifts_lay_into_state_space
+    state = Beryl::State[name: '  mina  ']
+
+    result =
+      state |
+      Beryl.task(:strip) { |lay| lay[:name].update(&:strip) } |
+      Beryl.task(:greet) { |lay| lay[:greeting].set("hello #{lay[:name].get}") }
+
+    assert_instance_of Beryl::Ok, result
+    assert_equal({ name: 'mina', greeting: 'hello mina' }, result.focus.to_h)
+  end
+
+  def test_task_sequence_over_lay_focus
+    strip = Beryl::Task[:strip] { |root| root[:name].update(&:strip) }
+    greet = Beryl::Task[:greet] { |root| root[:greeting].set("hello #{root[:name].get}") }
+
+    result = (strip >> greet).call(Beryl::Lay[name: '  mina  '])
+
+    assert_instance_of Beryl::Ok, result
+    assert_equal({ name: 'mina', greeting: 'hello mina' }, result.focus.to_h)
   end
 
   def test_parallel_runs_branches_against_snapshot_and_reduces
@@ -38,7 +68,7 @@ class BerylTest < Minitest::Test
     end
 
     started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    result = (left & right).reduce(Beryl::Merge.deep).call(Beryl::Focus[base: 10])
+    result = Beryl::Flow[Beryl::Lay[base: 10]].call((left & right).reduce(Beryl::Merge.deep))
     elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
 
     assert_instance_of Beryl::Ok, result
@@ -54,8 +84,8 @@ class BerylTest < Minitest::Test
       (Beryl::When[:paid] { |root| root[:plan].get == :paid } >> paid) |
       (Beryl::Else >> trial)
 
-    paid_result = branch.call(Beryl::Focus[plan: :paid])
-    trial_result = branch.call(Beryl::Focus[plan: :free])
+    paid_result = Beryl::Flow[Beryl::Lay[plan: :paid]].call(branch)
+    trial_result = Beryl::Flow[Beryl::Lay[plan: :free]].call(branch)
 
     assert_equal :paid, paid_result.focus[:status].get
     assert_equal :trial, trial_result.focus[:status].get
@@ -63,26 +93,28 @@ class BerylTest < Minitest::Test
 
   def test_rescue_with_task_keeps_partial_focus
     charge = Beryl::Task[:charge] { |root| root[:charged].set(true) }
-    explode = Beryl::Task[:explode] { |_root| raise "stripe timeout" }
+    explode = Beryl::Task[:explode] { |_root| raise 'stripe timeout' }
     compensate = Beryl::Task[:compensate] do |root|
       root[:compensated].set(root[:charged].get)
     end
 
-    result = (charge >> explode).rescue_with(compensate).call(Beryl::Focus[])
+    result = Beryl::Flow[Beryl::Lay[]].call((charge >> explode).rescue_with(compensate))
 
     assert_instance_of Beryl::Ok, result
     assert_equal({ charged: true, compensated: true }, result.focus.to_h)
   end
 
   def test_rescue_with_block_can_return_err_or_focus
-    explode = Beryl::Task[:explode] { |_root| raise "boom" }
+    explode = Beryl::Task[:explode] { |_root| raise 'boom' }
 
-    result = explode.rescue_with(:mark_failed) do |error, root|
-      root[:error].set(error.message)
-    end.call(Beryl::Focus[])
+    result = Beryl::Flow[Beryl::Lay[]].call(
+      explode.rescue_with(:mark_failed) do |error, root|
+        root[:error].set(error.message)
+      end
+    )
 
     assert_instance_of Beryl::Ok, result
-    assert_equal({ error: "boom" }, result.focus.to_h)
+    assert_equal({ error: 'boom' }, result.focus.to_h)
   end
 
   def test_workflow_compile_exposes_nodes_parallel_and_branches
@@ -101,6 +133,6 @@ class BerylTest < Minitest::Test
     assert_equal %i[a b c fallback], graph.nodes
     assert_equal [%i[a b]], graph.parallel_nodes
     assert_equal :example, graph.name
-    assert_includes graph.to_dot, "example"
+    assert_includes graph.to_dot, 'example'
   end
 end

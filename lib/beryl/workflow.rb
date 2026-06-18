@@ -14,7 +14,7 @@ module Beryl
     end
 
     def call(focus)
-      @body.call(focus)
+      Flow[focus].call(@body)
     end
 
     def >>(other)
@@ -25,8 +25,8 @@ module Beryl
       @body & other
     end
 
-    def rescue_with(handler = nil, name = nil, &block)
-      Sequence.build_rescue(@body, handler, name, &block)
+    def rescue_with(handler = nil, name = nil, &)
+      Sequence.build_rescue(@body, handler, name, &)
     end
 
     def compile

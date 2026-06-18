@@ -6,19 +6,24 @@ module Beryl
       new(name, &block)
     end
 
+    def self.build(name, &block)
+      self[name, &block]
+    end
+
     attr_reader :name
 
     def initialize(name, &block)
-      raise ArgumentError, "Task requires a block" unless block
+      raise ArgumentError, 'Task requires a block' unless block
 
       @name = name.to_sym
       @block = block
     end
 
     def call(focus)
-      Result.normalize(@block.call(focus))
-    rescue StandardError => error
-      Result.err(focus, error.class.name.to_sym, error.message, cause: error)
+      root = Result.coerce_focus(focus)
+      Result.normalize(@block.call(root))
+    rescue StandardError => e
+      Result.err(root || focus, e.class.name.to_sym, e.message, cause: e)
     end
 
     def >>(other)
@@ -27,6 +32,10 @@ module Beryl
 
     def &(other)
       Parallel.new([self, other])
+    end
+
+    def |(other)
+      self >> other
     end
 
     def rescue_with(handler = nil, name = nil, &block)

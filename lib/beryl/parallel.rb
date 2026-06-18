@@ -21,8 +21,8 @@ module Beryl
       self.class.new(@branches, reducer)
     end
 
-    def rescue_with(handler = nil, name = nil, &block)
-      Sequence.build_rescue(self, handler, name, &block)
+    def rescue_with(handler = nil, name = nil, &)
+      Sequence.build_rescue(self, handler, name, &)
     end
 
     def call(focus)
