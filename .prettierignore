@@ -1,0 +1,16 @@
+vendor/
+tmp/
+log/
+coverage/
+pkg/
+doc/
+node_modules/
+.bundle/
+Gemfile.lock
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+*.gem
+*.log
+.env
+.env.*

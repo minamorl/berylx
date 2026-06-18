@@ -1,0 +1,11 @@
+{
+  "name": "beryl-repo-tools",
+  "private": true,
+  "scripts": {
+    "format": "prettier --write \"**/*.{md,yml,yaml,json}\"",
+    "format:check": "prettier --check \"**/*.{md,yml,yaml,json}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  }
+}

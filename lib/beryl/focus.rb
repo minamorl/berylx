@@ -1,0 +1,79 @@
+# frozen_string_literal: true
+
+module Beryl
+  class Focus
+    def self.[](value = {})
+      new(value)
+    end
+
+    attr_reader :value
+
+    def initialize(value = {}, path = [])
+      @value = value
+      @path = path.freeze
+    end
+
+    def [](key)
+      self.class.new(@value, @path + [key])
+    end
+
+    def get
+      dig(@value, @path)
+    end
+
+    def set(next_value)
+      self.class.new(assoc_in(@value, @path, next_value))
+    end
+
+    def update(&block)
+      set(block.call(get))
+    end
+
+    def put(key, next_value)
+      self[key].set(next_value)
+    end
+
+    def reject(code, message = code.to_s, cause: nil)
+      Result.err(self, code, message, cause: cause)
+    end
+
+    def to_h
+      @value
+    end
+
+    def inspect
+      "#<Beryl::Focus path=#{@path.inspect} value=#{get.inspect}>"
+    end
+
+    private
+
+    def dig(current, path)
+      path.reduce(current) do |acc, key|
+        case acc
+        when Hash
+          acc.fetch(key)
+        else
+          acc.public_send(key)
+        end
+      end
+    end
+
+    def assoc_in(current, path, next_value)
+      return next_value if path.empty?
+
+      key = path.fetch(0)
+      rest = path.drop(1)
+
+      case current
+      when Hash
+        current.merge(key => assoc_in(current.fetch(key, nil), rest, next_value))
+      else
+        if current.respond_to?(:with)
+          current.with(key => assoc_in(current.public_send(key), rest, next_value))
+        else
+          raise TypeError, "cannot update #{current.class} at #{key.inspect}"
+        end
+      end
+    end
+  end
+end
