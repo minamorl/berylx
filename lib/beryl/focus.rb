@@ -2,11 +2,13 @@
 
 module Beryl
   class Focus
+    MISSING = Object.new.freeze
+
     def self.[](value = {})
       new(value)
     end
 
-    attr_reader :value
+    attr_reader :value, :path
 
     def initialize(value = {}, path = [])
       @value = value
@@ -17,8 +19,31 @@ module Beryl
       self.class.new(@value, @path + [key])
     end
 
-    def get
+    def get(default: MISSING)
       dig(@value, @path)
+    rescue KeyError, NoMethodError => e
+      return default unless default.equal?(MISSING)
+
+      raise e
+    end
+
+    def fetch(default = MISSING)
+      get(default: default)
+    end
+
+    def maybe
+      get(default: nil)
+    end
+
+    def present?
+      !get(default: MISSING).equal?(MISSING)
+    end
+
+    def required(code = :missing_focus, message = nil)
+      get
+      self
+    rescue KeyError, NoMethodError => e
+      reject(code, message || "missing focus at #{path.inspect}", cause: e)
     end
 
     def set(next_value)
