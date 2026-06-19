@@ -4,7 +4,7 @@ require 'minitest/autorun'
 require 'beryl'
 
 class CatchBoundaryTest < Minitest::Test
-  TERMINAL_KEY = ("fa" + "tal").to_sym
+  TERMINAL_KEY = :fatal
 
   def test_catch_does_not_handle_terminal_errors_by_default
     stop = Beryl::Task[:stop] do |root|
@@ -20,7 +20,7 @@ class CatchBoundaryTest < Minitest::Test
 
     assert_instance_of Beryl::Err, result
     assert_equal :stop, result.code
-    assert result.error.public_send(("fa" + "tal?").to_sym)
+    assert_predicate result.error, :fatal?
     assert_equal({ stopped: true }, result.focus.to_h)
   end
 

@@ -38,7 +38,7 @@ module Beryl
     def initialize(name = :catch, handler = nil, **options, &block)
       @name = name.to_sym
       @handler = block ? RescueBlock.new(@name, block) : handler
-      @catches_terminal = options.fetch(("fa" + "tal").to_sym, false)
+      @catches_terminal = options.fetch(:fatal, false)
 
       raise ArgumentError, 'Catch requires a task or block' unless @handler
     end
@@ -79,7 +79,7 @@ module Beryl
     private
 
     def terminal?(error)
-      error.public_send(("fa" + "tal?").to_sym)
+      error.fatal?
     end
 
     def recovery_failed(original_result, handler_result)
