@@ -212,6 +212,35 @@ class BerylTest < Minitest::Test
     assert_equal({ charged: true, compensated: true }, result.focus.to_h)
   end
 
+  def test_catch_boundary_recovers_previous_sequence_failure_and_continues
+    charge = Beryl::Task[:charge] { |root| root[:charged].set(true) }
+    explode = Beryl::Task[:explode] { |_root| raise 'stripe timeout' }
+    notify = Beryl::Task[:notify] { |root| root[:notified].set(true) }
+
+    result = Beryl::Flow[Beryl::Lay[]].call(
+      charge >> explode >>
+        Beryl::Catch[:refund] { |error, root| root[:refunded].set(error.message) } >>
+        notify
+    )
+
+    assert_instance_of Beryl::Ok, result
+    assert_equal({ charged: true, refunded: 'stripe timeout', notified: true }, result.focus.to_h)
+  end
+
+  def test_catch_boundary_is_ignored_when_sequence_is_successful
+    charge = Beryl::Task[:charge] { |root| root[:charged].set(true) }
+    notify = Beryl::Task[:notify] { |root| root[:notified].set(true) }
+
+    result = Beryl::Flow[Beryl::Lay[]].call(
+      charge >>
+        Beryl::Catch[:refund] { |_error, root| root[:refunded].set(true) } >>
+        notify
+    )
+
+    assert_instance_of Beryl::Ok, result
+    assert_equal({ charged: true, notified: true }, result.focus.to_h)
+  end
+
   def test_task_exception_returns_defined_error_with_failed_node_and_trace
     charge = Beryl::Task[:charge] { |root| root[:charged].set(true) }
     explode = Beryl::Task[:explode] { |_root| raise 'stripe timeout' }
