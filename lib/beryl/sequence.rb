@@ -33,7 +33,7 @@ module Beryl
 
       @steps.each do |step|
         if result.is_a?(Err)
-          return result unless step.is_a?(Catch)
+          return result unless step.is_a?(Catch) && step.catches?(result)
 
           result = step.call_error(result)
           next
