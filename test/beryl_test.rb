@@ -127,7 +127,7 @@ class BerylTest < Minitest::Test
     assert_equal 'mina', focus[:user][:name].get
     assert_nil focus[:missing].maybe
     assert_equal :fallback, focus[:missing].fetch(:fallback)
-    refute focus[:missing].present?
+    refute_predicate focus[:missing], :present?
 
     result = focus[:missing].required(:missing_user)
 

@@ -49,13 +49,30 @@ module Beryl
     end
 
     def strict_value(left, right, base, path)
+      value = strict_value_with_missing(left, right)
+      return value unless value.equal?(MISSING)
+
+      value = strict_value_with_hash_merge(left, right, base, path)
+      return value unless value.equal?(MISSING)
+
+      strict_value_from_changes(left, right, base, path)
+    end
+
+    def strict_value_with_missing(left, right)
       return left if right.equal?(MISSING)
       return right if left.equal?(MISSING)
 
-      if left.is_a?(Hash) && right.is_a?(Hash) && (base.is_a?(Hash) || base.equal?(MISSING))
-        return strict_merge(left, right, base.equal?(MISSING) ? {} : base, path)
-      end
+      MISSING
+    end
 
+    def strict_value_with_hash_merge(left, right, base, path)
+      return MISSING unless left.is_a?(Hash) && right.is_a?(Hash)
+      return MISSING unless base.is_a?(Hash) || base.equal?(MISSING)
+
+      strict_merge(left, right, base.equal?(MISSING) ? {} : base, path)
+    end
+
+    def strict_value_from_changes(left, right, base, path)
       right_changed = changed_from_base?(right, base)
       left_changed = changed_from_base?(left, base)
 

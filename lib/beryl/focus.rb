@@ -36,7 +36,10 @@ module Beryl
     end
 
     def present?
-      !get(default: MISSING).equal?(MISSING)
+      dig(@value, @path)
+      true
+    rescue KeyError, NoMethodError
+      false
     end
 
     def required(code = :missing_focus, message = nil)
