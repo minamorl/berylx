@@ -32,9 +32,8 @@ module Beryl
 
       return parallel_error(focus, failures) unless failures.empty?
 
-      merged = branch_results.map(&:focus).reduce(focus) do |acc, branch_focus|
-        @reducer.call(acc, branch_focus)
-      end
+      merged = merge_results(focus, branch_results)
+      return merged if merged.is_a?(Err)
 
       Result.ok(merged)
     end
@@ -48,6 +47,22 @@ module Beryl
     end
 
     private
+
+    def merge_results(focus, branch_results)
+      branch_results.map(&:focus).reduce(focus) do |acc, branch_focus|
+        call_reducer(acc, branch_focus, focus)
+      end
+    rescue StandardError => e
+      Result.err(focus, Error.from(e, failed_node: :parallel, trace: [:parallel]))
+    end
+
+    def call_reducer(left, right, base)
+      if @reducer.arity == 3
+        @reducer.call(left, right, base)
+      else
+        @reducer.call(left, right)
+      end
+    end
 
     def parallel_error(focus, failures)
       primary = failures.first
