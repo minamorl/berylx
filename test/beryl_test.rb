@@ -89,6 +89,19 @@ class BerylTest < Minitest::Test
     assert_equal result.focus.to_h, root.state
   end
 
+  def test_root_does_not_commit_err_results_automatically
+    root = Beryl::Root[charged: false]
+    fail_after_charge = Beryl.task(:fail_after_charge) do |lay|
+      lay[:charged].set(true).reject(:payment_failed, 'payment failed')
+    end
+
+    result = root | fail_after_charge
+
+    assert_instance_of Beryl::Err, result
+    assert_equal({ charged: true }, result.focus.to_h)
+    assert_equal({ charged: false }, root.state)
+  end
+
   def test_root_commit_deep_merges_external_observations
     root = Beryl::Root[user: { id: 1, name: 'mina' }]
 
@@ -106,6 +119,20 @@ class BerylTest < Minitest::Test
 
     assert_equal({ type: :snapshot, value: { count: 0 } }, events.first)
     assert_equal({ type: :commit, value: { count: 1 } }, events.last)
+  end
+
+  def test_focus_lookup_helpers_make_missing_paths_explicit
+    focus = Beryl::Lay[user: { name: 'mina' }]
+
+    assert_equal 'mina', focus[:user][:name].get
+    assert_nil focus[:missing].maybe
+    assert_equal :fallback, focus[:missing].fetch(:fallback)
+    refute_predicate focus[:missing], :present?
+
+    result = focus[:missing].required(:missing_user)
+
+    assert_instance_of Beryl::Err, result
+    assert_equal :missing_user, result.code
   end
 
   def test_domain_err_unwrap_raises_beryl_error_when_no_plain_cause_exists
@@ -135,6 +162,28 @@ class BerylTest < Minitest::Test
     assert_equal({ base: 10, left: 11, right: 12 }, result.focus.to_h)
   end
 
+  def test_strict_parallel_merge_allows_independent_updates
+    left = Beryl::Task[:left] { |root| root[:left].set(1) }
+    right = Beryl::Task[:right] { |root| root[:right].set(2) }
+
+    result = Beryl::Flow[Beryl::Lay[base: 10]].call((left & right).reduce(Beryl::Merge.strict))
+
+    assert_instance_of Beryl::Ok, result
+    assert_equal({ base: 10, left: 1, right: 2 }, result.focus.to_h)
+  end
+
+  def test_strict_parallel_merge_rejects_conflicting_updates
+    left = Beryl::Task[:left] { |root| root[:status].set(:paid) }
+    right = Beryl::Task[:right] { |root| root[:status].set(:trial) }
+
+    result = Beryl::Flow[Beryl::Lay[status: nil]].call((left & right).reduce(Beryl::Merge.strict))
+
+    assert_instance_of Beryl::Err, result
+    assert_equal :merge_conflict, result.code
+    assert_equal :parallel, result.failed_node
+    assert_equal({ status: nil }, result.focus.to_h)
+  end
+
   def test_branch_when_else_syntax
     paid = Beryl::Task[:paid] { |root| root[:status].set(:paid) }
     trial = Beryl::Task[:trial] { |root| root[:status].set(:trial) }
@@ -161,6 +210,35 @@ class BerylTest < Minitest::Test
 
     assert_instance_of Beryl::Ok, result
     assert_equal({ charged: true, compensated: true }, result.focus.to_h)
+  end
+
+  def test_catch_boundary_recovers_previous_sequence_failure_and_continues
+    charge = Beryl::Task[:charge] { |root| root[:charged].set(true) }
+    explode = Beryl::Task[:explode] { |_root| raise 'stripe timeout' }
+    notify = Beryl::Task[:notify] { |root| root[:notified].set(true) }
+
+    result = Beryl::Flow[Beryl::Lay[]].call(
+      charge >> explode >>
+        Beryl::Catch[:refund] { |error, root| root[:refunded].set(error.message) } >>
+        notify
+    )
+
+    assert_instance_of Beryl::Ok, result
+    assert_equal({ charged: true, refunded: 'stripe timeout', notified: true }, result.focus.to_h)
+  end
+
+  def test_catch_boundary_is_ignored_when_sequence_is_successful
+    charge = Beryl::Task[:charge] { |root| root[:charged].set(true) }
+    notify = Beryl::Task[:notify] { |root| root[:notified].set(true) }
+
+    result = Beryl::Flow[Beryl::Lay[]].call(
+      charge >>
+        Beryl::Catch[:refund] { |_error, root| root[:refunded].set(true) } >>
+        notify
+    )
+
+    assert_instance_of Beryl::Ok, result
+    assert_equal({ charged: true, notified: true }, result.focus.to_h)
   end
 
   def test_task_exception_returns_defined_error_with_failed_node_and_trace

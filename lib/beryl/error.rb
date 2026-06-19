@@ -34,7 +34,12 @@ module Beryl
       @trace = normalize_trace(context.fetch(:trace, []))
       @parallel_errors = context.fetch(:parallel_errors, []).freeze
       @metadata = context.fetch(:metadata, {}).freeze
+      @fatal = context.fetch(:fatal, false)
       set_backtrace(@cause.backtrace) if @cause&.backtrace
+    end
+
+    def fatal?
+      @fatal
     end
 
     def with_context(**context)
@@ -45,7 +50,8 @@ module Beryl
         failed_node: context[:failed_node] || @failed_node,
         trace: context[:trace] ? normalize_trace(context[:trace]) : @trace,
         parallel_errors: context[:parallel_errors] || @parallel_errors,
-        metadata: context[:metadata] ? @metadata.merge(context[:metadata]) : @metadata
+        metadata: context[:metadata] ? @metadata.merge(context[:metadata]) : @metadata,
+        fatal: context.fetch(:fatal, @fatal)
       )
     end
 
@@ -70,6 +76,7 @@ module Beryl
         message: message,
         failed_node: @failed_node,
         trace: @trace,
+        fatal: fatal?,
         parallel_errors: @parallel_errors.map { _1.respond_to?(:to_h) ? _1.to_h : _1 },
         metadata: @metadata
       }

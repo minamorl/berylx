@@ -29,9 +29,22 @@ module Beryl
     end
 
     def call(focus)
-      @steps.reduce(Result.ok(focus)) do |result, step|
-        Result.bind(result) { |current| step.call(current) }
+      result = Result.ok(focus)
+
+      @steps.each do |step|
+        if result.is_a?(Err)
+          return result unless step.is_a?(Catch) && step.catches?(result)
+
+          result = step.call_error(result)
+          next
+        end
+
+        next if step.is_a?(Catch)
+
+        result = step.call(result.focus)
       end
+
+      result
     end
 
     def compile

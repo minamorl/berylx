@@ -63,7 +63,7 @@ module Beryl
     protected
 
     def commit_result(result)
-      commit(result.focus) if result.respond_to?(:focus)
+      commit(result.focus) if result.is_a?(Ok)
       result
     end
 
