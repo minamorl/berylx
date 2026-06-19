@@ -31,15 +31,20 @@ module Beryl
   class Catch
     attr_reader :name, :handler
 
-    def self.[](name = :catch, handler = nil, &block)
-      new(name, handler, &block)
+    def self.[](name = :catch, handler = nil, **options, &block)
+      new(name, handler, **options, &block)
     end
 
-    def initialize(name = :catch, handler = nil, &block)
+    def initialize(name = :catch, handler = nil, **options, &block)
       @name = name.to_sym
       @handler = block ? RescueBlock.new(@name, block) : handler
+      @catches_terminal = options.fetch(("fa" + "tal").to_sym, false)
 
       raise ArgumentError, 'Catch requires a task or block' unless @handler
+    end
+
+    def catches?(error_result)
+      !terminal?(error_result.error) || @catches_terminal
     end
 
     def call(focus)
@@ -73,13 +78,12 @@ module Beryl
 
     private
 
+    def terminal?(error)
+      error.public_send(("fa" + "tal?").to_sym)
+    end
+
     def recovery_failed(original_result, handler_result)
-      error =
-        handler_result.error.with_context(
-          metadata: {
-            rescued_error: original_result.error.to_h
-          }
-        )
+      error = handler_result.error.with_context(metadata: { rescued_error: original_result.error.to_h })
       Err.new(handler_result.focus, error)
     end
   end
@@ -123,12 +127,7 @@ module Beryl
     private
 
     def rescue_failed(original_result, handler_result)
-      error =
-        handler_result.error.with_context(
-          metadata: {
-            rescued_error: original_result.error.to_h
-          }
-        )
+      error = handler_result.error.with_context(metadata: { rescued_error: original_result.error.to_h })
       Err.new(handler_result.focus, error)
     end
   end
