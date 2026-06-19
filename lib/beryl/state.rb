@@ -3,7 +3,7 @@
 module Beryl
   class State
     def self.[](value = {})
-      new(Lay[value])
+      new(Root[value].to_lay)
     end
 
     attr_reader :lay, :node

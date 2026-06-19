@@ -6,6 +6,10 @@ module Beryl
       Beryl::Fn[*args, &block]
     end
 
+    def Root(value = {})
+      Beryl::Root[value]
+    end
+
     def State(value = {})
       Beryl::State[value]
     end
@@ -19,7 +23,7 @@ module Beryl
     end
 
     def Err(focus, code, message = code.to_s, cause: nil)
-      Beryl::Err.new(focus, code, message, cause)
+      Beryl::Result.err(focus, code, message, cause: cause)
     end
   end
 end

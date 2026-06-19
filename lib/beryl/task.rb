@@ -21,9 +21,10 @@ module Beryl
 
     def call(focus)
       root = Result.coerce_focus(focus)
-      Result.normalize(@block.call(root))
+      result = Result.normalize(@block.call(root))
+      result.is_a?(Err) ? with_task_context(result) : result
     rescue StandardError => e
-      Result.err(root || focus, e.class.name.to_sym, e.message, cause: e)
+      Result.err(root || focus, e.class.name.to_sym, e.message, cause: e, failed_node: @name, trace: [@name])
     end
 
     def >>(other)
@@ -48,6 +49,13 @@ module Beryl
 
     def nodes
       [self]
+    end
+
+    private
+
+    def with_task_context(result)
+      error = result.error.failed_node ? result.error : result.error.prepend_trace(@name)
+      Err.new(result.focus, error)
     end
   end
 end

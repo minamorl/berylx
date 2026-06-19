@@ -28,8 +28,9 @@ module Beryl
     def call(focus)
       threads = @branches.map { |branch| Thread.new { branch.call(focus) } }
       branch_results = threads.map(&:value)
-      failed = branch_results.find { _1.is_a?(Err) }
-      return failed if failed
+      failures = branch_results.grep(Err)
+
+      return parallel_error(focus, failures) unless failures.empty?
 
       merged = branch_results.map(&:focus).reduce(focus) do |acc, branch_focus|
         @reducer.call(acc, branch_focus)
@@ -44,6 +45,24 @@ module Beryl
 
     def nodes
       @branches.flat_map(&:nodes)
+    end
+
+    private
+
+    def parallel_error(focus, failures)
+      primary = failures.first
+      errors = failures.map(&:error)
+      error =
+        Error[
+          :parallel_failed,
+          "#{failures.size} parallel branch#{'es' unless failures.size == 1} failed",
+          cause: primary.cause,
+          failed_node: primary.failed_node,
+          trace: primary.trace,
+          parallel_errors: errors
+        ]
+
+      Err.new(primary.focus || focus, error)
     end
   end
 end

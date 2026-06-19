@@ -7,7 +7,57 @@ module Beryl
     end
   end
 
-  Err = Data.define(:focus, :code, :message, :cause) do
+  Err = Data.define(:focus, :error) do
+    def unwrap
+      raise error.unwrap
+    end
+
+    def to_exception
+      error.to_exception
+    end
+
+    def code
+      error.code
+    end
+
+    def message
+      error.message
+    end
+
+    def cause
+      error.cause
+    end
+
+    def failed_node
+      error.failed_node
+    end
+
+    def trace
+      error.trace
+    end
+
+    def parallel_errors
+      error.parallel_errors
+    end
+
+    def deconstruct
+      [focus, code, message, cause]
+    end
+
+    def deconstruct_keys(keys)
+      values = {
+        focus: focus,
+        error: error,
+        code: code,
+        message: message,
+        cause: cause,
+        failed_node: failed_node,
+        trace: trace,
+        parallel_errors: parallel_errors
+      }
+      keys ? values.slice(*keys) : values
+    end
+
     def |(_other)
       self
     end
@@ -20,8 +70,15 @@ module Beryl
       Ok.new(value)
     end
 
-    def err(value, code, message = code.to_s, cause: nil)
-      Err.new(value, code, message, cause)
+    def err(value, code_or_error, message = nil, **context)
+      error =
+        if code_or_error.is_a?(Error)
+          code_or_error.with_context(**context)
+        else
+          Error[code_or_error, message || code_or_error.to_s, **context]
+        end
+
+      Err.new(value, error)
     end
 
     def normalize(value)
@@ -34,7 +91,7 @@ module Beryl
     end
 
     def coerce_focus(value)
-      return value if value.respond_to?(:[]) && value.respond_to?(:to_h)
+      return value if value.is_a?(Focus)
 
       Focus[value]
     end

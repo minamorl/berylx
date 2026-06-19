@@ -10,11 +10,21 @@ module Beryl
     end
 
     def call(focus, error_result)
-      Result.normalize(@block.call(error_result.cause || error_result, focus))
+      result = Result.normalize(@block.call(error_result.cause || error_result.error, focus))
+      result.is_a?(Err) ? with_rescue_context(result) : result
+    rescue StandardError => e
+      Result.err(focus, e.class.name.to_sym, e.message, cause: e, failed_node: @name, trace: [@name])
     end
 
     def nodes
       [self]
+    end
+
+    private
+
+    def with_rescue_context(result)
+      error = result.error.failed_node ? result.error : result.error.prepend_trace(@name)
+      Err.new(result.focus, error)
     end
   end
 
@@ -33,7 +43,8 @@ module Beryl
       if @handler.is_a?(RescueBlock)
         @handler.call(result.focus, result)
       else
-        @handler.call(result.focus)
+        handler_result = @handler.call(result.focus)
+        handler_result.is_a?(Err) ? rescue_failed(result, handler_result) : handler_result
       end
     end
 
@@ -51,6 +62,18 @@ module Beryl
 
     def nodes
       @body.nodes + @handler.nodes
+    end
+
+    private
+
+    def rescue_failed(original_result, handler_result)
+      error =
+        handler_result.error.with_context(
+          metadata: {
+            rescued_error: original_result.error.to_h
+          }
+        )
+      Err.new(handler_result.focus, error)
     end
   end
 end

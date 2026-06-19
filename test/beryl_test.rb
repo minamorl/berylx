@@ -37,11 +37,10 @@ class BerylTest < Minitest::Test
 
   def test_state_pipe_task_syntax_lifts_lay_into_state_space
     state = Beryl::State[name: '  mina  ']
+    strip = Beryl.task(:strip) { |lay| lay[:name].update(&:strip) }
+    greet = Beryl.task(:greet) { |lay| lay[:greeting].set("hello #{lay[:name].get}") }
 
-    result =
-      state |
-      Beryl.task(:strip) { |lay| lay[:name].update(&:strip) } |
-      Beryl.task(:greet) { |lay| lay[:greeting].set("hello #{lay[:name].get}") }
+    result = state | strip | greet
 
     assert_instance_of Beryl::Ok, result
     assert_equal({ name: 'mina', greeting: 'hello mina' }, result.focus.to_h)
@@ -55,6 +54,66 @@ class BerylTest < Minitest::Test
 
     assert_instance_of Beryl::Ok, result
     assert_equal({ name: 'mina', greeting: 'hello mina' }, result.focus.to_h)
+  end
+
+  def test_root_is_common_origin_for_lay_and_state_layers
+    strip = Beryl.task(:strip) { |lay| lay[:name].update(&:strip) }
+    greet = Beryl.task(:greet) { |lay| lay[:greeting].set("hello #{lay[:name].get}") }
+
+    root = Beryl::Root[name: '  mina  ']
+
+    lay_result = (strip >> greet).call(root.to_lay)
+    state_result = root | strip | greet
+
+    assert_equal({ name: 'mina', greeting: 'hello mina' }, lay_result.focus.to_h)
+    assert_equal lay_result.focus.to_h, state_result.focus.to_h
+  end
+
+  def test_err_unwrap_maps_back_to_plain_ruby_exception
+    cause = RuntimeError.new('stripe timeout')
+    result = Beryl::Result.err(Beryl::Lay[charged: true], :payment_failed, 'payment failed', cause: cause)
+
+    assert_same cause, result.to_exception
+    error = assert_raises(RuntimeError) { result.unwrap }
+    assert_same cause, error
+  end
+
+  def test_root_commits_task_results_back_to_the_same_entity
+    root = Beryl::Root[request: { id: 'req_1' }, checkout: { user_id: 1 }]
+    enrich = Beryl.task(:enrich) { |lay| lay[:checkout][:plan_id].set(3) }
+
+    result = root | enrich
+
+    assert_instance_of Beryl::Ok, result
+    assert_equal({ request: { id: 'req_1' }, checkout: { user_id: 1, plan_id: 3 } }, result.focus.to_h)
+    assert_equal result.focus.to_h, root.state
+  end
+
+  def test_root_commit_deep_merges_external_observations
+    root = Beryl::Root[user: { id: 1, name: 'mina' }]
+
+    root.commit(user: { role: 'admin' })
+
+    assert_equal({ user: { id: 1, name: 'mina', role: 'admin' } }, root.state)
+  end
+
+  def test_root_subscribe_observes_snapshot_and_commits
+    root = Beryl::Root[count: 0]
+    events = []
+    root.subscribe { events << _1 }
+
+    root.commit(count: 1)
+
+    assert_equal({ type: :snapshot, value: { count: 0 } }, events.first)
+    assert_equal({ type: :commit, value: { count: 1 } }, events.last)
+  end
+
+  def test_domain_err_unwrap_raises_beryl_error_when_no_plain_cause_exists
+    result = Beryl::Lay[].reject(:duplicate_subscription, 'already subscribed')
+
+    error = assert_raises(Beryl::Error) { result.unwrap }
+    assert_equal :duplicate_subscription, error.code
+    assert_equal 'already subscribed', error.message
   end
 
   def test_parallel_runs_branches_against_snapshot_and_reduces
@@ -102,6 +161,48 @@ class BerylTest < Minitest::Test
 
     assert_instance_of Beryl::Ok, result
     assert_equal({ charged: true, compensated: true }, result.focus.to_h)
+  end
+
+  def test_task_exception_returns_defined_error_with_failed_node_and_trace
+    charge = Beryl::Task[:charge] { |root| root[:charged].set(true) }
+    explode = Beryl::Task[:explode] { |_root| raise 'stripe timeout' }
+
+    result = Beryl::Flow[Beryl::Lay[]].call(charge >> explode)
+
+    assert_instance_of Beryl::Err, result
+    assert_instance_of Beryl::Error, result.error
+    assert_equal :RuntimeError, result.code
+    assert_equal 'stripe timeout', result.message
+    assert_equal :explode, result.failed_node
+    assert_equal %i[explode], result.trace
+    assert_equal({ charged: true }, result.focus.to_h)
+  end
+
+  def test_lay_reject_returns_defined_error
+    reject = Beryl::Task[:reject_duplicate] do |root|
+      root[:checked].set(true).reject(:duplicate_subscription, 'already subscribed')
+    end
+
+    result = Beryl::Flow[Beryl::Lay[]].call(reject)
+
+    assert_instance_of Beryl::Err, result
+    assert_equal :duplicate_subscription, result.code
+    assert_equal 'already subscribed', result.message
+    assert_equal :reject_duplicate, result.failed_node
+    assert_equal %i[reject_duplicate], result.trace
+    assert_equal({ checked: true }, result.focus.to_h)
+  end
+
+  def test_parallel_collects_multiple_branch_errors
+    left = Beryl::Task[:left] { |_root| raise 'left failed' }
+    right = Beryl::Task[:right] { |_root| raise 'right failed' }
+
+    result = Beryl::Flow[Beryl::Lay[]].call(left & right)
+
+    assert_instance_of Beryl::Err, result
+    assert_equal :parallel_failed, result.code
+    assert_equal 2, result.parallel_errors.size
+    assert_equal %i[left right], result.parallel_errors.map(&:failed_node)
   end
 
   def test_rescue_with_block_can_return_err_or_focus
