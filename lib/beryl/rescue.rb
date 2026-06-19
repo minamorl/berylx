@@ -28,6 +28,62 @@ module Beryl
     end
   end
 
+  class Catch
+    attr_reader :name, :handler
+
+    def self.[](name = :catch, handler = nil, &block)
+      new(name, handler, &block)
+    end
+
+    def initialize(name = :catch, handler = nil, &block)
+      @name = name.to_sym
+      @handler = block ? RescueBlock.new(@name, block) : handler
+
+      raise ArgumentError, 'Catch requires a task or block' unless @handler
+    end
+
+    def call(focus)
+      Result.ok(focus)
+    end
+
+    def call_error(error_result)
+      if @handler.is_a?(RescueBlock)
+        @handler.call(error_result.focus, error_result)
+      else
+        handler_result = @handler.call(error_result.focus)
+        handler_result.is_a?(Err) ? recovery_failed(error_result, handler_result) : handler_result
+      end
+    end
+
+    def >>(other)
+      Sequence.new([self, other])
+    end
+
+    def &(other)
+      Parallel.new([self, other])
+    end
+
+    def rescue_with(handler = nil, name = nil, &)
+      Sequence.build_rescue(self, handler, name, &)
+    end
+
+    def nodes
+      @handler.respond_to?(:nodes) ? @handler.nodes : [self]
+    end
+
+    private
+
+    def recovery_failed(original_result, handler_result)
+      error =
+        handler_result.error.with_context(
+          metadata: {
+            rescued_error: original_result.error.to_h
+          }
+        )
+      Err.new(handler_result.focus, error)
+    end
+  end
+
   class Rescue
     attr_reader :body, :handler
 
