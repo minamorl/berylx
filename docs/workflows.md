@@ -117,8 +117,23 @@ graph.nodes
 # => named workflow nodes
 
 graph.to_dot
-# => "digraph ..."
+# => digraph "checkout" {
+#      "validate#0";
+#      "split#1";
+#      "join#2";
+#      "split#1" -> "reserve_inventory#3";
+#      "reserve_inventory#3" -> "join#2";
+#      "split#1" -> "authorize_payment#4";
+#      "authorize_payment#4" -> "join#2";
+#      "confirm#5";
+#      "validate#0" -> "split#1";
+#      "join#2" -> "confirm#5";
+#    }
 ```
+
+Consecutive steps chain with edges, a parallel group fans out through a synthetic `split`/`join`
+pair, and branch arms carry the predicate name (or `else`) as an edge label. Node ids are
+index-suffixed so repeated task names stay distinct.
 
 This makes the executable workflow shape available for documentation, visualization, and
 instrumentation without a second declarative DSL.

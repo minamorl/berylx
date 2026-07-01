@@ -314,4 +314,44 @@ class BerylTest < Minitest::Test
     assert_equal :example, graph.name
     assert_includes graph.to_dot, 'example'
   end
+
+  def test_to_dot_sequence_chains_nodes_with_edges
+    a = Beryl::Task[:a] { _1 }
+    b = Beryl::Task[:b] { _1 }
+    c = Beryl::Task[:c] { _1 }
+
+    dot = (a >> b >> c).compile.to_dot
+
+    assert_includes dot, '"a#0";'
+    assert_includes dot, '"b#1";'
+    assert_includes dot, '"c#2";'
+    assert_includes dot, '"a#0" -> "b#1";'
+    assert_includes dot, '"b#1" -> "c#2";'
+  end
+
+  def test_to_dot_parallel_fans_out_and_in
+    a = Beryl::Task[:a] { _1 }
+    b = Beryl::Task[:b] { _1 }
+
+    dot = (a & b).compile.to_dot
+
+    assert_includes dot, '"split#0";'
+    assert_includes dot, '"join#1";'
+    assert_includes dot, '"split#0" -> "a#2";'
+    assert_includes dot, '"a#2" -> "join#1";'
+    assert_includes dot, '"split#0" -> "b#3";'
+    assert_includes dot, '"b#3" -> "join#1";'
+  end
+
+  def test_to_dot_branch_labels_each_arm
+    c = Beryl::Task[:c] { _1 }
+    fallback = Beryl::Task[:fallback] { _1 }
+
+    branch = (Beryl::When[:ok] { true } >> c) | (Beryl::Else >> fallback)
+    dot = Beryl::Graph.from(branch).to_dot
+
+    assert_includes dot, '"branch#0";'
+    assert_includes dot, '"branch#0" -> "c#1" [label="ok"];'
+    assert_includes dot, '"branch#0" -> "fallback#2" [label="else"];'
+  end
 end

@@ -168,10 +168,10 @@ module CheckoutWorkflow
 
   require_lay =
     Beryl::Task[:require_lay] do |lay|
-      return lay.reject(:missing_http_request, 'lay[:http][:request] is required') unless lay[:http][:request].get
-      return lay.reject(:missing_db, 'lay[:deps][:db] is required') unless lay[:deps][:db].get
-      return lay.reject(:missing_payments, 'lay[:deps][:payments] is required') unless lay[:deps][:payments].get
-      return lay.reject(:missing_mailer, 'lay[:deps][:mailer] is required') unless lay[:deps][:mailer].get
+      next lay.reject(:missing_http_request, 'lay[:http][:request] is required') unless lay[:http][:request].get
+      next lay.reject(:missing_db, 'lay[:deps][:db] is required') unless lay[:deps][:db].get
+      next lay.reject(:missing_payments, 'lay[:deps][:payments] is required') unless lay[:deps][:payments].get
+      next lay.reject(:missing_mailer, 'lay[:deps][:mailer] is required') unless lay[:deps][:mailer].get
 
       lay
     rescue KeyError => e
@@ -184,10 +184,10 @@ module CheckoutWorkflow
       body = request.body.read
       request.body.rewind if request.body.respond_to?(:rewind)
 
-      return lay.reject(:empty_json_body, 'request body is empty') if body.strip.empty?
+      next lay.reject(:empty_json_body, 'request body is empty') if body.strip.empty?
 
       json = JSON.parse(body)
-      return lay.reject(:invalid_json_body, 'JSON body must be an object') unless json.is_a?(Hash)
+      next lay.reject(:invalid_json_body, 'JSON body must be an object') unless json.is_a?(Hash)
 
       lay[:input].set(json)
     rescue JSON::ParserError => e
@@ -202,7 +202,7 @@ module CheckoutWorkflow
       plan_id = Integer(input.fetch('plan_id'))
       payment_token = input.fetch('payment_token').to_s.strip
 
-      return lay.reject(:invalid_payment_token, 'payment_token is required') if payment_token.empty?
+      next lay.reject(:invalid_payment_token, 'payment_token is required') if payment_token.empty?
 
       lay = lay[:checkout][:user_id].set(user_id)
       lay = lay[:checkout][:plan_id].set(plan_id)
@@ -217,7 +217,7 @@ module CheckoutWorkflow
       user_id = lay[:checkout][:user_id].get
       user = db[:users].where(id: user_id).first
 
-      return lay.reject(:user_not_found, "user #{user_id} not found") unless user
+      next lay.reject(:user_not_found, "user #{user_id} not found") unless user
 
       lay[:checkout][:user].set(user)
     end
@@ -228,7 +228,7 @@ module CheckoutWorkflow
       plan_id = lay[:checkout][:plan_id].get
       plan = db[:plans].where(id: plan_id, active: true).first
 
-      return lay.reject(:plan_not_found, "active plan #{plan_id} not found") unless plan
+      next lay.reject(:plan_not_found, "active plan #{plan_id} not found") unless plan
 
       lay[:checkout][:plan].set(plan)
     end
@@ -239,7 +239,7 @@ module CheckoutWorkflow
       user = lay[:checkout][:user].get
       existing = db[:subscriptions].where(user_id: user.fetch(:id), status: 'active').first
 
-      return lay.reject(:already_subscribed, 'user already has an active subscription') if existing
+      next lay.reject(:already_subscribed, 'user already has an active subscription') if existing
 
       lay
     end
@@ -328,7 +328,7 @@ module CheckoutWorkflow
   capture_failure =
     Beryl::Task[:capture_failure] do |lay|
       failure = lay[:failure].get
-      return lay unless failure
+      next lay unless failure
 
       lay[:checkout][:failure].set(failure)
     rescue KeyError
@@ -338,7 +338,7 @@ module CheckoutWorkflow
   refund_charge_if_needed =
     Beryl::Task[:refund_charge_if_needed] do |lay|
       charge = lay[:checkout][:charge].get
-      return lay unless charge
+      next lay unless charge
 
       payments = lay[:deps][:payments].get
       request_id = lay[:http][:request_id].get
