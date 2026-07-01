@@ -117,11 +117,42 @@ graph.nodes
 # => named workflow nodes
 
 graph.to_dot
-# => "digraph ..."
+# => digraph "checkout" {
+#      "validate#0";
+#      "split#1";
+#      "join#2";
+#      "split#1" -> "reserve_inventory#3";
+#      "reserve_inventory#3" -> "join#2";
+#      "split#1" -> "authorize_payment#4";
+#      "authorize_payment#4" -> "join#2";
+#      "confirm#5";
+#      "validate#0" -> "split#1";
+#      "join#2" -> "confirm#5";
+#    }
 ```
+
+Consecutive steps chain with edges, a parallel group fans out through a synthetic `split`/`join`
+pair, and branch arms carry the predicate name (or `else`) as an edge label. Node ids are
+index-suffixed so repeated task names stay distinct.
 
 This makes the executable workflow shape available for documentation, visualization, and
 instrumentation without a second declarative DSL.
+
+## The `|` operator by receiver
+
+`|` is overloaded, and its meaning depends on the value on the left:
+
+| Receiver | `left \| right` | Meaning                                                                  |
+| -------- | --------------- | ------------------------------------------------------------------------ |
+| `Root`   | `root \| flow`  | Run `flow` from committed state and commit the result back into the root |
+| `State`  | `state \| flow` | Run `flow` from a standalone state (raw blocks are coerced into tasks)   |
+| `Ok`     | `ok \| node`    | Bind: pass the focus into `node.call` and continue                       |
+| `Err`    | `err \| node`   | Short-circuit: return the `Err` unchanged and ignore `node`              |
+| `Task`   | `task \| other` | Sequence, identical to `task >> other`                                   |
+| `Branch` | `arm \| arm`    | Combine branch arms into one branch (see [Branching](#branching))        |
+
+The running forms (`Root`, `State`) execute a workflow; the result forms (`Ok`, `Err`) thread a
+single value through the railway; the composition forms (`Task`, `Branch`) build larger nodes.
 
 ## Recovery is composition
 

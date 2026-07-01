@@ -37,6 +37,9 @@ jobs:
       - name: Run RuboCop
         run: bundle exec rubocop
 
+      - name: Syntax-check examples
+        run: ruby -c examples/roda_checkout_app.rb
+
       - name: Build gem
         run: gem build beryl.gemspec
 

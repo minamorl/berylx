@@ -4,7 +4,7 @@ module Beryl
   class Parallel
     attr_reader :branches, :reducer
 
-    def initialize(branches, reducer = Merge.keep_right)
+    def initialize(branches, reducer = Merge.deep)
       @branches = branches.flat_map { _1.is_a?(Parallel) ? _1.branches : _1 }.freeze
       @reducer = reducer
     end

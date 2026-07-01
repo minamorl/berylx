@@ -44,7 +44,7 @@ module Beryl
 
     def required(code = :missing_focus, message = nil)
       get
-      self
+      Result.ok(self)
     rescue KeyError, NoMethodError => e
       reject(code, message || "missing focus at #{path.inspect}", cause: e)
     end

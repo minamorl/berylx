@@ -2,10 +2,6 @@
 
 module Beryl
   module Prelude
-    def Fn(*args, &block)
-      Beryl::Fn[*args, &block]
-    end
-
     def Root(value = {})
       Beryl::Root[value]
     end

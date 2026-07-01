@@ -108,7 +108,8 @@ lay[:nickname].fetch('friend') # => "friend"
 lay[:nickname].present?       # => false
 ```
 
-For a workflow-level validation error, return an `Err`:
+`required` always returns a `Result`: `Ok(focus)` when the path resolves, or an `Err` carrying the
+given code when it is missing.
 
 ```ruby
 result = lay[:account_id].required(:missing_account_id)
