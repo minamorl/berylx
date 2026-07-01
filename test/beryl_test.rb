@@ -4,13 +4,6 @@ require 'minitest/autorun'
 require 'beryl'
 
 class BerylTest < Minitest::Test
-  def test_compose
-    add = Beryl::Fn[&->(value) { value + 1 }]
-    mul = Beryl::Fn[&->(value) { value * 2 }]
-
-    assert_equal 22, (add >> mul).call(10)
-  end
-
   def test_result_map
     result = Beryl::Result.map(Beryl::Result.ok(10)) { _1 + 1 }
 
@@ -133,6 +126,11 @@ class BerylTest < Minitest::Test
 
     assert_instance_of Beryl::Err, result
     assert_equal :missing_user, result.code
+
+    present = focus[:user].required(:missing_user)
+
+    assert_instance_of Beryl::Ok, present
+    assert_equal({ name: 'mina' }, present.focus.get)
   end
 
   def test_domain_err_unwrap_raises_beryl_error_when_no_plain_cause_exists

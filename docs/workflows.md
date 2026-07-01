@@ -138,6 +138,22 @@ index-suffixed so repeated task names stay distinct.
 This makes the executable workflow shape available for documentation, visualization, and
 instrumentation without a second declarative DSL.
 
+## The `|` operator by receiver
+
+`|` is overloaded, and its meaning depends on the value on the left:
+
+| Receiver | `left \| right` | Meaning                                                                  |
+| -------- | --------------- | ------------------------------------------------------------------------ |
+| `Root`   | `root \| flow`  | Run `flow` from committed state and commit the result back into the root |
+| `State`  | `state \| flow` | Run `flow` from a standalone state (raw blocks are coerced into tasks)   |
+| `Ok`     | `ok \| node`    | Bind: pass the focus into `node.call` and continue                       |
+| `Err`    | `err \| node`   | Short-circuit: return the `Err` unchanged and ignore `node`              |
+| `Task`   | `task \| other` | Sequence, identical to `task >> other`                                   |
+| `Branch` | `arm \| arm`    | Combine branch arms into one branch (see [Branching](#branching))        |
+
+The running forms (`Root`, `State`) execute a workflow; the result forms (`Ok`, `Err`) thread a
+single value through the railway; the composition forms (`Task`, `Branch`) build larger nodes.
+
 ## Recovery is composition
 
 `Catch` can sit inline in a sequence, while `rescue_with` wraps an explicit subgraph:

@@ -44,7 +44,8 @@ result.parallel_errors
 result.focus
 ```
 
-Use `required` to turn a missing path into a domain error:
+Use `required` to turn a missing path into a domain error. It returns `Ok(focus)` when the path is
+present and an `Err` with the given code when it is missing:
 
 ```ruby
 result = lay[:account_id].required(:missing_account_id)

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative 'beryl/version'
-require_relative 'beryl/fn'
 require_relative 'beryl/error'
 require_relative 'beryl/result'
 require_relative 'beryl/focus'
