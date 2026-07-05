@@ -2,15 +2,16 @@
 
 module Beryl
   class Parallel
-    attr_reader :branches, :reducer
+    attr_reader :branches, :reducer, :on_err
 
-    def initialize(branches, reducer = Merge.deep)
+    def initialize(branches, reducer = Merge.deep, on_err: :short_circuit)
       @branches = branches.flat_map { _1.is_a?(Parallel) ? _1.branches : _1 }.freeze
       @reducer = reducer
+      @on_err = on_err
     end
 
     def &(other)
-      self.class.new(@branches + [other], @reducer)
+      self.class.new(@branches + [other], @reducer, on_err: @on_err)
     end
 
     def >>(other)
@@ -18,7 +19,15 @@ module Beryl
     end
 
     def reduce(reducer)
-      self.class.new(@branches, reducer)
+      self.class.new(@branches, reducer, on_err: @on_err)
+    end
+
+    def short_circuit
+      self.class.new(@branches, @reducer, on_err: :short_circuit)
+    end
+
+    def accumulate
+      self.class.new(@branches, @reducer, on_err: :accumulate)
     end
 
     def rescue_with(handler = nil, name = nil, &)
@@ -30,7 +39,7 @@ module Beryl
       branch_results = threads.map(&:value)
       failures = branch_results.grep(Err)
 
-      return parallel_error(focus, failures) unless failures.empty?
+      return handle_failures(focus, failures) unless failures.empty?
 
       merged = merge_results(focus, branch_results)
       return merged if merged.is_a?(Err)
@@ -47,6 +56,12 @@ module Beryl
     end
 
     private
+
+    def handle_failures(focus, failures)
+      return failures.first if @on_err == :short_circuit
+
+      parallel_error(focus, failures)
+    end
 
     def merge_results(focus, branch_results)
       branch_results.map(&:focus).reduce(focus) do |acc, branch_focus|

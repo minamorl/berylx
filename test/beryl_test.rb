@@ -273,12 +273,62 @@ class BerylTest < Minitest::Test
     left = Beryl::Task[:left] { |_root| raise 'left failed' }
     right = Beryl::Task[:right] { |_root| raise 'right failed' }
 
-    result = Beryl::Flow[Beryl::Lay[]].call(left & right)
+    result = Beryl::Flow[Beryl::Lay[]].call((left & right).accumulate)
 
     assert_instance_of Beryl::Err, result
     assert_equal :parallel_failed, result.code
     assert_equal 2, result.parallel_errors.size
     assert_equal %i[left right], result.parallel_errors.map(&:failed_node)
+  end
+
+  def test_parallel_short_circuit_is_default
+    left = Beryl::Task[:left] { |_root| raise 'left failed' }
+    right = Beryl::Task[:right] { |_root| raise 'right failed' }
+
+    result = Beryl::Flow[Beryl::Lay[]].call(left & right)
+
+    assert_instance_of Beryl::Err, result
+    refute_equal :parallel_failed, result.code
+    assert_equal :RuntimeError, result.code
+    assert_equal :left, result.failed_node
+    assert_empty result.parallel_errors
+  end
+
+  def test_parallel_accumulate_collects_all
+    left = Beryl::Task[:left] { |_root| raise 'left failed' }
+    right = Beryl::Task[:right] { |_root| raise 'right failed' }
+
+    result = Beryl::Flow[Beryl::Lay[]].call((left & right).accumulate)
+
+    assert_instance_of Beryl::Err, result
+    assert_equal :parallel_failed, result.code
+    assert_equal 2, result.parallel_errors.size
+    assert_equal %i[left right], result.parallel_errors.map(&:failed_node)
+  end
+
+  def test_parallel_short_circuit_success_still_merges
+    left = Beryl::Task[:left] { |root| root[:left].set(1) }
+    right = Beryl::Task[:right] { |root| root[:right].set(2) }
+
+    result = Beryl::Flow[Beryl::Lay[base: 10]].call((left & right).reduce(Beryl::Merge.deep))
+
+    assert_instance_of Beryl::Ok, result
+    assert_equal({ base: 10, left: 1, right: 2 }, result.focus.to_h)
+  end
+
+  def test_parallel_mode_preserved_through_reduce_and_and
+    left = Beryl::Task[:left] { |_root| raise 'left failed' }
+    right = Beryl::Task[:right] { |_root| raise 'right failed' }
+    third = Beryl::Task[:third] { |_root| raise 'third failed' }
+
+    combined = ((left & right).accumulate.reduce(Beryl::Merge.deep) & third)
+    result = Beryl::Flow[Beryl::Lay[]].call(combined)
+
+    assert_instance_of Beryl::Err, result
+    assert_equal :accumulate, combined.on_err
+    assert_equal :parallel_failed, result.code
+    assert_equal 3, result.parallel_errors.size
+    assert_equal %i[left right third], result.parallel_errors.map(&:failed_node)
   end
 
   def test_rescue_with_block_can_return_err_or_focus
