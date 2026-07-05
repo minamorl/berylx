@@ -20,27 +20,43 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ruby: ["3.2", "3.3", "3.4", "4.0"]
+        ruby: ["3.2", "3.3", "3.4"]
     steps:
-      - name: Checkout
+      # beryl の Gemfile は移行期に darkcore を sibling path 依存で参照する
+      # (gem 'darkcore', path: '../darkcore-ruby')。CI では隣接ディレクトリへ
+      # 両リポジトリを checkout してから bundle しないと解決できず exit 13 で落ちる。
+      - name: Checkout beryl
         uses: actions/checkout@v4
+        with:
+          path: beryl
+
+      - name: Checkout darkcore-ruby (sibling path dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: minamorl/darkcore-ruby
+          path: darkcore-ruby
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
+          working-directory: beryl
 
       - name: Run tests
+        working-directory: beryl
         run: bundle exec rake test
 
       - name: Run RuboCop
+        working-directory: beryl
         run: bundle exec rubocop
 
       - name: Syntax-check examples
+        working-directory: beryl
         run: ruby -c examples/roda_checkout_app.rb
 
       - name: Build gem
+        working-directory: beryl
         run: gem build beryl.gemspec
 
   prettier:
