@@ -7,15 +7,26 @@ module Beryl
   # Beryl::EffectTree — beryl workflow を darkcore の単一 Effect 型
   # (Freer monad, tagged effect の木) へ載せ替える adapter。
   #
-  # 第一段: Sequence(>>) の写像のみ。parallel(&) / branch / rescue は
-  # spec-system で free/quarantine 保留のため触らない。
+  # 第一段: Sequence(>>) の写像。
+  # 第二段: parallel(&) / branch / rescue も同じ Effect 木へ載せる。
+  #   合成子はそれぞれ 1 つの tagged effect ノードで表し、モード
+  #   (short_circuit / accumulate など) は handler の分岐ではなく
+  #   payload に載せた beryl ノード (検査可能データ) から読む。
   #
   # 掟 (spec-system pins) との対応:
   #   - substrate.effect_tree      : workflow を darkcore Effect 木へ写す。
   #   - substrate.task_as_effect   : Task を tagged effect ノード
   #       Effect(:beryl_task, [task, focus], k) として表す。
-  #   - substrate.no_opaque_thunk  : payload は検査可能なデータ (Task+Focus)。
-  #       Task の block は handler が呼ぶまで実行しない。
+  #   - substrate.parallel.mapped  : parallel を Effect(:beryl_parallel, [node, focus])
+  #       へ写す。short_circuit / accumulate は handler ではなく payload の
+  #       node.on_err (タグ) で運ぶ。
+  #   - substrate.branch.mapped    : branch を Effect(:beryl_branch, [node, focus])
+  #       へ写す。arm の選択は handler の分岐でなく effect 木の tag で表す。
+  #   - substrate.rescue.mapped    : rescue を Effect(:beryl_rescue, [node, focus])
+  #       へ写す。body の Err は handler 差し替え (回復 handler) で回復させる。
+  #   - result.parallel_default    : short_circuit が既定、accumulate はタグ上書き。
+  #   - substrate.no_opaque_thunk  : payload は検査可能なデータ (beryl ノード + Focus)。
+  #       Task の block や branch/reducer は handler が呼ぶまで実行しない。
   #   - substrate.aspect_via_handler: retry/dry_run/audit は workflow 本体
   #       (compile 結果の Effect 木) を書き換えず handler マップ差し替えで後付け。
   #   - result.envelope            : 成功 Beryl::Ok(lay) / 失敗 Beryl::Err(partial_lay, error)。
@@ -29,8 +40,11 @@ module Beryl
   # 継続 (bind に渡す関数) の中で行う。
   # ==================================================================
   module EffectTree
-    # Task を darkcore Effect 木にディスパッチするためのタグ。
-    TASK = :beryl_task
+    # beryl 合成子を darkcore Effect 木にディスパッチするためのタグ。
+    TASK     = :beryl_task
+    PARALLEL = :beryl_parallel
+    BRANCH   = :beryl_branch
+    RESCUE   = :beryl_rescue
 
     # dry_run の戻り値: 最終結果 (実行しないので常に Ok) と、列挙された計画。
     DryRun = Data.define(:result, :steps)
@@ -39,28 +53,38 @@ module Beryl
 
     # ----------------------------------------------------------------
     # compile — beryl ノードを「Focus を受け取り darkcore Effect を返す」
-    # Kleisli 矢に落とす。第一段では Task と Sequence のみ対応する。
+    # Kleisli 矢に落とす。
+    #   Sequence は bind で接ぎ木し (compile_sequence)、
+    #   Task / Parallel / Branch / Rescue はそれぞれ 1 つの tagged effect
+    #   ノードに落とす。payload は [node, focus] の検査可能データ
+    #   (不透明サンクにしない = substrate.no_opaque_thunk)。
+    #   合成子の内部 (branches / arms / body / reducer / on_err) は
+    #   handler が副木として実行するまで発火しない。
     # ----------------------------------------------------------------
     def compile(node)
       case node
-      when Sequence
-        arrows = node.steps.map { |step| compile(step) }
-        lambda do |focus|
-          arrows.reduce(Darkcore.pure(Result.ok(focus))) do |effect, arrow|
-            # darkcore の bind は構造の接ぎ木。短絡 (Err) 判定はこの継続内 =
-            # beryl 圏の algebra site で行う (darkcore bind には埋めない)。
-            effect.bind do |prev|
-              prev.is_a?(Err) ? Darkcore.pure(prev) : arrow.call(prev.focus)
-            end
-          end
-        end
-      when Task
-        # Task を不透明サンクにせず tagged effect ノードとして表す。
-        # payload = [task, focus] は検査可能なデータ (task.name も読める)。
-        ->(focus) { Darkcore.op(TASK, [node, focus]) }
+      when Sequence then compile_sequence(node)
+      when Task     then ->(focus) { Darkcore.op(TASK, [node, focus]) }
+      when Parallel then ->(focus) { Darkcore.op(PARALLEL, [node, focus]) }
+      when Branch   then ->(focus) { Darkcore.op(BRANCH, [node, focus]) }
+      when Rescue   then ->(focus) { Darkcore.op(RESCUE, [node, focus]) }
       else
         raise ArgumentError,
-              "EffectTree (stage 1) supports Task / Sequence only, got #{node.class}"
+              "EffectTree supports Task / Sequence / Parallel / Branch / Rescue, got #{node.class}"
+      end
+    end
+
+    # Sequence を darkcore bind で接ぎ木する。bind は構造の接ぎ木のみで、
+    # 短絡 (Err) 判定は継続内 = beryl 圏の algebra site で行う
+    # (darkcore の bind には埋めない)。
+    def compile_sequence(node)
+      arrows = node.steps.map { |step| compile(step) }
+      lambda do |focus|
+        arrows.reduce(Darkcore.pure(Result.ok(focus))) do |effect, arrow|
+          effect.bind do |prev|
+            prev.is_a?(Err) ? Darkcore.pure(prev) : arrow.call(prev.focus)
+          end
+        end
       end
     end
 
@@ -77,31 +101,55 @@ module Beryl
       Darkcore.fold(build(node, focus), on_return: ->(x) { x }, handlers: handlers)
     end
 
-    # 実実行の handler マップ: Task の block を実際に呼ぶ。
-    # Task#call が Ok/Err への正規化・失敗コンテキスト付与・例外捕捉まで担うので、
-    # legacy 実行 (Sequence#call → step.call) と同一のセマンティクスになる。
+    # 実実行の handler マップ: Task の block を実際に呼び、合成子ノードは
+    # それぞれ副木として実行しつつ beryl 圏の algebra で結果封筒を合成する。
+    # Task#call / 各合成子の call と同一のセマンティクスになるよう写している。
+    #
+    # 合成子 handler は自分自身 (handlers) を副木実行に渡すため、木は
+    # 同じ圏 (real) のまま再帰する。dry-run 側も同じ再帰構造を持つので、
+    # aspect (real / dry) は handler マップの差し替えだけで切り替わる。
     def real_handlers
       {
-        TASK => lambda do |payload|
-          task, focus = payload
-          task.call(focus)
-        end
+        TASK => ->(payload) { real_task(payload) },
+        PARALLEL => ->(payload) { real_parallel(payload) },
+        BRANCH => ->(payload) { real_branch(payload) },
+        RESCUE => ->(payload) { real_rescue(payload) }
       }
     end
 
-    # dry-run: workflow 本体を書き換えず handler 差し替えだけで、Task を
-    # 実行せずに計画 (Task 名の列) を列挙する。常に Ok(focus) を返すため
-    # 短絡せず全ステップを辿る。
-    def dry_run(node, focus)
-      steps = []
-      handlers = {
-        TASK => lambda do |payload|
-          task, foc = payload
-          steps << task.name
-          Result.ok(foc) # Task の block は呼ばない (副作用ゼロ)。
-        end
-      }
-      DryRun.new(run(node, focus, handlers: handlers), steps)
+    def real_task(payload)
+      task, focus = payload
+      task.call(focus)
+    end
+
+    def real_parallel(payload)
+      run_parallel(payload[0], payload[1], real_handlers)
+    end
+
+    def real_branch(payload)
+      run_branch(payload[0], payload[1], real_handlers)
+    end
+
+    def real_rescue(payload)
+      run_rescue(payload[0], payload[1], real_handlers)
+    end
+
+    # ----------------------------------------------------------------
+    # 副木実行ヘルパ — beryl ノードを与えられた handler マップで走らせ、
+    # beryl 結果封筒 (Ok/Err) を得る。合成子 handler が枝の実行に使う。
+    # ----------------------------------------------------------------
+    def run_subtree(node, focus, handlers)
+      Darkcore.fold(build(node, focus), on_return: ->(x) { x }, handlers: handlers)
     end
   end
 end
+
+# 合成子 (parallel / branch / rescue) の real interpreter は別ファイルで
+# EffectTree を再オープンして足す。core (compile / build / run / handler マップ)
+# と、各合成子の beryl 圏 algebra (短絡・merge・回復) を語りの上でも分離する。
+require_relative 'effect_tree/combinators'
+
+# dry-run interpreter (aspect) も別ファイルで EffectTree を再オープンして足す。
+# real interpreter と dry interpreter を語り (ファイル) の上でも分離し、
+# aspect が handler マップ差し替えだけで載ることを構造で示す。
+require_relative 'effect_tree/dry_run'
