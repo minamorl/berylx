@@ -31,6 +31,24 @@ class EffectTreeTest < Minitest::Test
     Beryl::Task[:validate] { |lay| lay.reject(:invalid, 'name is blank') }
   end
 
+  # --- 第二段 (parallel / branch / rescue) 用の workflow 部品 --------
+  def set_a
+    Beryl::Task[:set_a] { |lay| lay[:a].set(1) }
+  end
+
+  def set_b
+    Beryl::Task[:set_b] { |lay| lay[:b].set(2) }
+  end
+
+  def positive_arm
+    Beryl::When[:pos] { |lay| lay[:n].get.positive? } >>
+      Beryl::Task[:mark_positive] { |lay| lay[:sign].set(:positive) }
+  end
+
+  def else_arm
+    Beryl::Else >> Beryl::Task[:mark_negative] { |lay| lay[:sign].set(:negative) }
+  end
+
   # --- lay の突き合わせ用ヘルパ (Focus は == を持たないので to_h 比較) --
   def assert_same_envelope(legacy, effect)
     assert_equal legacy.class, effect.class, 'result class (Ok/Err) must match'
@@ -41,8 +59,18 @@ class EffectTreeTest < Minitest::Test
       assert_equal legacy.focus.to_h, effect.focus.to_h, 'Err partial_lay must match'
       assert_equal legacy.code, effect.code, 'Err code must match'
       assert_equal legacy.message, effect.message, 'Err message must match'
-      assert_equal legacy.failed_node, effect.failed_node, 'Err failed_node must match'
+      if legacy.failed_node.nil?
+        assert_nil effect.failed_node, 'Err failed_node must match'
+      else
+        assert_equal legacy.failed_node, effect.failed_node, 'Err failed_node must match'
+      end
+
       assert_equal legacy.trace, effect.trace, 'Err trace must match'
+      assert_equal(
+        legacy.parallel_errors.map(&:to_h),
+        effect.parallel_errors.map(&:to_h),
+        'Err parallel_errors must match'
+      )
     end
   end
 
@@ -148,5 +176,172 @@ class EffectTreeTest < Minitest::Test
     assert_equal %i[strip greet], dry.steps
     # dry-run 側では greet が実行されないので greeting は生えない。
     refute dry.result.focus.to_h.key?(:greeting)
+  end
+
+  # ================================================================
+  # 4. Parallel — dual-run 差分検証 (成功 / short_circuit / accumulate)
+  # ================================================================
+  def test_parallel_success_matches_legacy
+    workflow = set_a & set_b # 既定 reducer Merge.deep, on_err :short_circuit
+    input = { base: 0 }
+
+    legacy = workflow.call(Beryl::Focus[input])
+    effect = Beryl::EffectTree.run(workflow, input)
+
+    assert_instance_of Beryl::Ok, effect
+    assert_equal({ base: 0, a: 1, b: 2 }, effect.focus.to_h)
+    assert_same_envelope(legacy, effect)
+  end
+
+  def test_parallel_short_circuit_matches_legacy
+    # 既定は short_circuit: 最初の失敗ブランチ (branch 順) の Err だけを返す。
+    workflow = boom & domain_reject
+    input = { name: '' }
+
+    legacy = workflow.call(Beryl::Focus[input])
+    effect = Beryl::EffectTree.run(workflow, input)
+
+    assert_instance_of Beryl::Err, effect
+    assert_equal :boom, effect.failed_node
+    assert_empty effect.parallel_errors # short_circuit は集約しない
+    assert_same_envelope(legacy, effect)
+  end
+
+  def test_parallel_accumulate_matches_legacy
+    # accumulate はタグ上書き: 全失敗を parallel_errors に集約する。
+    workflow = (boom & domain_reject).accumulate
+    input = { name: '' }
+
+    legacy = workflow.call(Beryl::Focus[input])
+    effect = Beryl::EffectTree.run(workflow, input)
+
+    assert_instance_of Beryl::Err, effect
+    assert_equal :parallel_failed, effect.code
+    assert_equal 2, effect.parallel_errors.size
+    assert_equal %i[RuntimeError invalid], effect.parallel_errors.map(&:code)
+    assert_same_envelope(legacy, effect)
+  end
+
+  def test_parallel_default_is_short_circuit
+    # result.parallel_default: 明示しなければ short_circuit で走る。
+    workflow = boom & domain_reject
+
+    effect = Beryl::EffectTree.run(workflow, { name: '' })
+
+    assert_instance_of Beryl::Err, effect
+    refute_equal :parallel_failed, effect.code # 集約していない = short_circuit
+    assert_empty effect.parallel_errors
+  end
+
+  # ================================================================
+  # 5. Branch — dual-run 差分検証 (match / no_branch_matched)
+  # ================================================================
+  def test_branch_match_matches_legacy
+    workflow = positive_arm | else_arm
+    input = { n: 5 }
+
+    legacy = workflow.call(Beryl::Focus[input])
+    effect = Beryl::EffectTree.run(workflow, input)
+
+    assert_instance_of Beryl::Ok, effect
+    assert_equal({ n: 5, sign: :positive }, effect.focus.to_h)
+    assert_same_envelope(legacy, effect)
+  end
+
+  def test_branch_else_arm_matches_legacy
+    workflow = positive_arm | else_arm
+    input = { n: -3 }
+
+    legacy = workflow.call(Beryl::Focus[input])
+    effect = Beryl::EffectTree.run(workflow, input)
+
+    assert_instance_of Beryl::Ok, effect
+    assert_equal({ n: -3, sign: :negative }, effect.focus.to_h)
+    assert_same_envelope(legacy, effect)
+  end
+
+  def test_branch_no_match_matches_legacy
+    workflow = positive_arm # Else 無し: どの arm も match しない
+    input = { n: -1 }
+
+    legacy = workflow.call(Beryl::Focus[input])
+    effect = Beryl::EffectTree.run(workflow, input)
+
+    assert_instance_of Beryl::Err, effect
+    assert_equal :no_branch_matched, effect.code
+    assert_same_envelope(legacy, effect)
+  end
+
+  # ================================================================
+  # 6. Rescue — dual-run 差分検証 (成功スルー / 回復 / 回復も失敗)
+  # ================================================================
+  def test_rescue_body_success_passes_through_matches_legacy
+    workflow = set_a.rescue_with { |_error, focus| focus[:healed].set(true) }
+    input = { base: 0 }
+
+    legacy = workflow.call(Beryl::Focus[input])
+    effect = Beryl::EffectTree.run(workflow, input)
+
+    assert_instance_of Beryl::Ok, effect
+    assert_equal({ base: 0, a: 1 }, effect.focus.to_h) # handler は発火しない
+    assert_same_envelope(legacy, effect)
+  end
+
+  def test_rescue_recovers_body_failure_matches_legacy
+    workflow = boom.rescue_with { |_error, focus| focus[:healed].set(true) }
+    input = { base: 0 }
+
+    legacy = workflow.call(Beryl::Focus[input])
+    effect = Beryl::EffectTree.run(workflow, input)
+
+    assert_instance_of Beryl::Ok, effect
+    assert_equal({ base: 0, healed: true }, effect.focus.to_h)
+    assert_same_envelope(legacy, effect)
+  end
+
+  def test_rescue_recovery_failure_matches_legacy
+    workflow = boom.rescue_with { |_error, focus| focus.reject(:heal_failed, 'could not heal') }
+    input = { base: 0 }
+
+    legacy = workflow.call(Beryl::Focus[input])
+    effect = Beryl::EffectTree.run(workflow, input)
+
+    assert_instance_of Beryl::Err, effect
+    assert_equal :heal_failed, effect.code
+    assert_equal :rescue, effect.failed_node
+    assert_same_envelope(legacy, effect)
+  end
+
+  # ================================================================
+  # 7. dry-run — parallel / branch / rescue も副作用ゼロで計画列挙
+  # ================================================================
+  def test_dry_run_parallel_enumerates_all_branches_without_executing
+    workflow = set_a & boom & set_b # boom は実行されれば raise する
+
+    dry = Beryl::EffectTree.dry_run(workflow, { base: 0 })
+
+    assert_equal %i[set_a boom set_b], dry.steps # 全 branch を列挙
+    assert_instance_of Beryl::Ok, dry.result
+    assert_equal({ base: 0 }, dry.result.focus.to_h) # 副作用ゼロ
+  end
+
+  def test_dry_run_branch_enumerates_matched_arm_only
+    workflow = positive_arm | else_arm
+
+    dry = Beryl::EffectTree.dry_run(workflow, { n: 5 })
+
+    assert_equal %i[mark_positive], dry.steps # match した arm のみ
+    assert_instance_of Beryl::Ok, dry.result
+    assert_equal({ n: 5 }, dry.result.focus.to_h)
+  end
+
+  def test_dry_run_rescue_enumerates_body_only
+    workflow = boom.rescue_with { |_error, focus| focus[:healed].set(true) }
+
+    dry = Beryl::EffectTree.dry_run(workflow, { base: 0 })
+
+    assert_equal %i[boom], dry.steps # body のみ、handler は発火しない
+    assert_instance_of Beryl::Ok, dry.result
+    assert_equal({ base: 0 }, dry.result.focus.to_h)
   end
 end
