@@ -23,4 +23,7 @@ Gem::Specification.new do |spec|
     'AGENTS.md'
   ]
   spec.require_paths = ['lib']
+
+  # darkcore は beryl workflow の唯一の実行基盤 (EffectTree substrate)。必須依存。
+  spec.add_dependency 'darkcore'
 end

@@ -12,8 +12,11 @@ module Beryl
       @focus = Result.coerce_focus(focus)
     end
 
+    # 実行の唯一のエントリ。合成子でも単発 Task でも EffectTree (darkcore
+    # Effect 木) を必ず通す。Task は葉として EffectTree の :beryl_task handler が
+    # Task#call を呼ぶ。
     def call(node)
-      node.call(@focus)
+      EffectTree.run(node, @focus)
     end
 
     def >>(other)

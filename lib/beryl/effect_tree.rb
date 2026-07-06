@@ -68,24 +68,38 @@ module Beryl
       when Parallel then ->(focus) { Darkcore.op(PARALLEL, [node, focus]) }
       when Branch   then ->(focus) { Darkcore.op(BRANCH, [node, focus]) }
       when Rescue   then ->(focus) { Darkcore.op(RESCUE, [node, focus]) }
+      when Catch    then ->(focus) { Darkcore.pure(Result.ok(focus)) }
       else
         raise ArgumentError,
-              "EffectTree supports Task / Sequence / Parallel / Branch / Rescue, got #{node.class}"
+              "EffectTree supports Task / Sequence / Parallel / Branch / Rescue / Catch, got #{node.class}"
       end
     end
 
     # Sequence を darkcore bind で接ぎ木する。bind は構造の接ぎ木のみで、
-    # 短絡 (Err) 判定は継続内 = beryl 圏の algebra site で行う
-    # (darkcore の bind には埋めない)。
+    # 短絡 (Err) 判定・Catch 境界での回復は継続内 = beryl 圏の algebra site で
+    # 行う (darkcore の bind には埋めない)。
     def compile_sequence(node)
-      arrows = node.steps.map { |step| compile(step) }
       lambda do |focus|
-        arrows.reduce(Darkcore.pure(Result.ok(focus))) do |effect, arrow|
-          effect.bind do |prev|
-            prev.is_a?(Err) ? Darkcore.pure(prev) : arrow.call(prev.focus)
-          end
+        node.steps.reduce(Darkcore.pure(Result.ok(focus))) do |effect, step|
+          effect.bind { |prev| compile_step(step, prev) }
         end
       end
+    end
+
+    # Sequence の 1 ステップを次の Effect に接ぐ。Catch は Sequence の短絡境界:
+    # 成功時は素通りし、直前が Err のときだけ (かつ catches? が真のとき) 回復させる。
+    # 非 Catch は Err なら短絡 (prev を前送り)、Ok なら実行する。
+    def compile_step(step, prev)
+      return compile_catch(step, prev) if step.is_a?(Catch)
+      return Darkcore.pure(prev) if prev.is_a?(Err)
+
+      compile(step).call(prev.focus)
+    end
+
+    def compile_catch(step, prev)
+      return Darkcore.pure(prev) unless prev.is_a?(Err) && step.catches?(prev)
+
+      Darkcore.pure(recover(step.handler, prev))
     end
 
     # beryl ノードと初期 focus から darkcore Effect 木を組み立てる。

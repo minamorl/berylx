@@ -3,16 +3,8 @@
 require 'minitest/autorun'
 require 'beryl'
 
-# darkcore substrate は移行期の optional・遅延依存 (sibling ../darkcore-ruby)。
-# darkcore を持たない環境 (単体 clone) では effect_tree を load できないので、
-# この dual-run 差分検証スイート自体を静かに skip する。beryl core の健全性は
-# beryl_test.rb 側が darkcore 抜きで担保する。
-begin
-  require 'beryl/effect_tree'
-  DARKCORE_AVAILABLE = true
-rescue LoadError
-  DARKCORE_AVAILABLE = false
-end
+# darkcore substrate は beryl の必須依存。EffectTree は core (require 'beryl') の
+# 一部として無条件に読み込まれるので、ここでの遅延 require / skip ガードは不要。
 
 # beryl workflow の Sequence(>>) を darkcore の単一 Effect 型へ載せ替えた
 # adapter (Beryl::EffectTree) の検証。
@@ -24,10 +16,6 @@ end
 #   2. Task を不透明サンクでなく tagged effect ノードで表していること。
 #   3. handler 差し替えだけで dry-run (実行せず計画列挙) できること。
 class EffectTreeTest < Minitest::Test
-  def setup
-    skip 'darkcore substrate unavailable (sibling ../darkcore-ruby not bundled)' unless DARKCORE_AVAILABLE
-  end
-
   # --- テスト用 workflow ------------------------------------------
   def strip
     Beryl::Task[:strip] { |lay| lay[:name].update(&:strip) }

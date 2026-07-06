@@ -28,23 +28,10 @@ module Beryl
       Rescue.new(body, rescue_handler)
     end
 
+    # 実行は EffectTree (darkcore Effect 木) に一本化。短絡・Catch 境界の
+    # 回復といった結果封筒の algebra は EffectTree 側に集約している。
     def call(focus)
-      result = Result.ok(focus)
-
-      @steps.each do |step|
-        if result.is_a?(Err)
-          return result unless step.is_a?(Catch) && step.catches?(result)
-
-          result = step.call_error(result)
-          next
-        end
-
-        next if step.is_a?(Catch)
-
-        result = step.call(result.focus)
-      end
-
-      result
+      EffectTree.run(self, focus)
     end
 
     def compile

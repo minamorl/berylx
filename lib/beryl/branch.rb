@@ -45,21 +45,14 @@ module Beryl
       Sequence.build_rescue(self, handler, name, &)
     end
 
+    # 実行は EffectTree に一本化。arm 選択と no_branch_matched の algebra は
+    # EffectTree.run_branch に集約している。
     def call(focus)
-      arm = @arms.find { matches?(_1.predicate, focus) }
-      return Result.err(focus, :no_branch_matched) unless arm
-
-      arm.body.call(focus)
+      EffectTree.run(self, focus)
     end
 
     def nodes
       @arms.flat_map { _1.body.nodes }
-    end
-
-    private
-
-    def matches?(predicate, focus)
-      predicate.else_branch || predicate.block.call(focus)
     end
   end
 end

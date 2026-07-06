@@ -98,12 +98,19 @@ module Beryl
       result = run_subtree(node.body, focus, handlers)
       return result if result.is_a?(Ok)
 
-      handler = node.handler
+      recover(node.handler, result)
+    end
+
+    # 回復 handler の適用 — Rescue と Sequence 内の Catch 境界で共有する
+    # beryl 圏の algebra。RescueBlock (ブロック handler) はエラーと focus を
+    # 受け取り、それ以外の node handler は focus を受け取って結果封筒を返す。
+    # handler 自身が Err を返したら回復失敗として元エラーを metadata に畳む。
+    def recover(handler, error_result)
       if handler.is_a?(RescueBlock)
-        handler.call(result.focus, result)
+        handler.call(error_result.focus, error_result)
       else
-        handler_result = handler.call(result.focus)
-        handler_result.is_a?(Err) ? rescue_failed(result, handler_result) : handler_result
+        handler_result = handler.call(error_result.focus)
+        handler_result.is_a?(Err) ? rescue_failed(error_result, handler_result) : handler_result
       end
     end
 

@@ -47,17 +47,10 @@ module Beryl
       !terminal?(error_result.error) || @catches_terminal
     end
 
+    # Catch は Sequence 内の短絡境界。実行 (成功時の素通り・Err の回復) は
+    # EffectTree.compile_sequence が担うので、単独 call も EffectTree に委譲する。
     def call(focus)
-      Result.ok(focus)
-    end
-
-    def call_error(error_result)
-      if @handler.is_a?(RescueBlock)
-        @handler.call(error_result.focus, error_result)
-      else
-        handler_result = @handler.call(error_result.focus)
-        handler_result.is_a?(Err) ? recovery_failed(error_result, handler_result) : handler_result
-      end
+      EffectTree.run(self, focus)
     end
 
     def >>(other)
@@ -81,11 +74,6 @@ module Beryl
     def terminal?(error)
       error.fatal?
     end
-
-    def recovery_failed(original_result, handler_result)
-      error = handler_result.error.with_context(metadata: { rescued_error: original_result.error.to_h })
-      Err.new(handler_result.focus, error)
-    end
   end
 
   class Rescue
@@ -96,16 +84,10 @@ module Beryl
       @handler = handler
     end
 
+    # 実行は EffectTree に一本化。body の Err を回復 handler で差し替える
+    # algebra は EffectTree.run_rescue に集約している。
     def call(focus)
-      result = @body.call(focus)
-      return result if result.is_a?(Ok)
-
-      if @handler.is_a?(RescueBlock)
-        @handler.call(result.focus, result)
-      else
-        handler_result = @handler.call(result.focus)
-        handler_result.is_a?(Err) ? rescue_failed(result, handler_result) : handler_result
-      end
+      EffectTree.run(self, focus)
     end
 
     def >>(other)
@@ -122,13 +104,6 @@ module Beryl
 
     def nodes
       @body.nodes + @handler.nodes
-    end
-
-    private
-
-    def rescue_failed(original_result, handler_result)
-      error = handler_result.error.with_context(metadata: { rescued_error: original_result.error.to_h })
-      Err.new(handler_result.focus, error)
     end
   end
 end
