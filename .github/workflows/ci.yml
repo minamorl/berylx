@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        ruby: ["3.2", "3.3", "3.4"]
+        ruby: ["3.2", "3.3", "3.4", "4.0"]
     steps:
       # beryl の Gemfile は移行期に darkcore を sibling path 依存で参照する
       # (gem 'darkcore', path: '../darkcore-ruby')。CI では隣接ディレクトリへ
