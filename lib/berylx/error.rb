@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Beryl
+module Berylx
   class Error < StandardError
     attr_reader :code, :cause, :failed_node, :trace, :parallel_errors, :metadata
 

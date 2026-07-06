@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Beryl
+module Berylx
   class State
     def self.[](value = {})
       new(Root[value].to_lay)
@@ -38,7 +38,7 @@ module Beryl
     def coerce_node(taskish)
       return taskish if taskish.respond_to?(:call)
 
-      raise TypeError, "expected a Beryl task/workflow node, got #{taskish.inspect}"
+      raise TypeError, "expected a Berylx task/workflow node, got #{taskish.inspect}"
     end
   end
 

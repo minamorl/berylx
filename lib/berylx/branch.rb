@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Beryl
+module Berylx
   Predicate = Data.define(:name, :block, :else_branch)
   BranchArm = Data.define(:predicate, :body)
 

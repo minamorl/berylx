@@ -1,6 +1,6 @@
 # Composing workflows
 
-Beryl workflows are named Ruby values that compose into sequences, branches, parallel groups, and
+Berylx workflows are named Ruby values that compose into sequences, branches, parallel groups, and
 recovery scopes.
 
 ## Tasks and sequencing
@@ -8,11 +8,11 @@ recovery scopes.
 A task is a named transition from `Lay` to `Result[Lay]`:
 
 ```ruby
-validate = Beryl::Task[:validate] do |lay|
+validate = Berylx::Task[:validate] do |lay|
   lay[:account_id].present? ? lay : lay.reject(:missing_account)
 end
 
-load_account = Beryl::Task[:load_account] do |lay|
+load_account = Berylx::Task[:load_account] do |lay|
   lay[:account].set(Account.find(lay[:account_id].get))
 end
 
@@ -31,7 +31,7 @@ result = root | workflow
 Or evaluate it from a standalone lay:
 
 ```ruby
-result = workflow.call(Beryl::Lay[account_id: 42])
+result = workflow.call(Berylx::Lay[account_id: 42])
 ```
 
 ## Branching
@@ -39,14 +39,14 @@ result = workflow.call(Beryl::Lay[account_id: 42])
 Use `When` and `Else` for predicate-based choice:
 
 ```ruby
-paid = Beryl::Task[:paid] { |lay| lay[:status].set(:paid) }
-trial = Beryl::Task[:trial] { |lay| lay[:status].set(:trial) }
+paid = Berylx::Task[:paid] { |lay| lay[:status].set(:paid) }
+trial = Berylx::Task[:trial] { |lay| lay[:status].set(:trial) }
 
 branch =
-  (Beryl::When[:paid] { |lay| lay[:plan].get == :paid } >> paid) |
-  (Beryl::Else >> trial)
+  (Berylx::When[:paid] { |lay| lay[:plan].get == :paid } >> paid) |
+  (Berylx::Else >> trial)
 
-result = branch.call(Beryl::Lay[plan: :paid])
+result = branch.call(Berylx::Lay[plan: :paid])
 result.focus[:status].get
 # => :paid
 ```
@@ -59,16 +59,16 @@ failures.
 `&` starts sibling branches from the same input snapshot. A reducer combines their returned lays:
 
 ```ruby
-left = Beryl::Task[:left] do |lay|
+left = Berylx::Task[:left] do |lay|
   lay[:left].set(lay[:base].get + 1)
 end
 
-right = Beryl::Task[:right] do |lay|
+right = Berylx::Task[:right] do |lay|
   lay[:right].set(lay[:base].get + 2)
 end
 
-workflow = (left & right).reduce(Beryl::Merge.deep)
-result = workflow.call(Beryl::Lay[base: 10])
+workflow = (left & right).reduce(Berylx::Merge.deep)
+result = workflow.call(Berylx::Lay[base: 10])
 
 result.focus.to_h
 # => { base: 10, left: 11, right: 12 }
@@ -76,20 +76,20 @@ result.focus.to_h
 
 Parallel branches never mutate a shared lay. Choose the merge policy explicitly:
 
-| Reducer                   | Behavior                                                                     |
-| ------------------------- | ---------------------------------------------------------------------------- |
-| `Beryl::Merge.keep_left`  | Keep the accumulated left focus                                              |
-| `Beryl::Merge.keep_right` | Keep the right branch focus                                                  |
-| `Beryl::Merge.deep`       | Deep-merge hashes; the right value wins scalar conflicts                     |
-| `Beryl::Merge.strict`     | Merge independent changes and return `:merge_conflict` for conflicting paths |
+| Reducer                    | Behavior                                                                     |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| `Berylx::Merge.keep_left`  | Keep the accumulated left focus                                              |
+| `Berylx::Merge.keep_right` | Keep the right branch focus                                                  |
+| `Berylx::Merge.deep`       | Deep-merge hashes; the right value wins scalar conflicts                     |
+| `Berylx::Merge.strict`     | Merge independent changes and return `:merge_conflict` for conflicting paths |
 
 ```ruby
-left = Beryl::Task[:left] { |lay| lay[:status].set(:paid) }
-right = Beryl::Task[:right] { |lay| lay[:status].set(:trial) }
+left = Berylx::Task[:left] { |lay| lay[:status].set(:paid) }
+right = Berylx::Task[:right] { |lay| lay[:status].set(:trial) }
 
 result = (left & right)
-  .reduce(Beryl::Merge.strict)
-  .call(Beryl::Lay[status: nil])
+  .reduce(Berylx::Merge.strict)
+  .call(Berylx::Lay[status: nil])
 
 result.code
 # => :merge_conflict
@@ -103,8 +103,8 @@ Parallel failure information is available through `result.parallel_errors`. See
 Wrap a composition in `Workflow` when the whole procedure deserves a name:
 
 ```ruby
-workflow = Beryl::Workflow[:checkout] do
-  validate >> (reserve_inventory & authorize_payment).reduce(Beryl::Merge.strict) >> confirm
+workflow = Berylx::Workflow[:checkout] do
+  validate >> (reserve_inventory & authorize_payment).reduce(Berylx::Merge.strict) >> confirm
 end
 ```
 
@@ -159,7 +159,7 @@ single value through the railway; the composition forms (`Task`, `Branch`) build
 `Catch` can sit inline in a sequence, while `rescue_with` wraps an explicit subgraph:
 
 ```ruby
-inline = charge >> Beryl::Catch[:refund] { |error, lay| compensate(error, lay) } >> notify
+inline = charge >> Berylx::Catch[:refund] { |error, lay| compensate(error, lay) } >> notify
 
 scoped =
   (charge >> create_subscription)

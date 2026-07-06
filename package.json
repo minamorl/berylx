@@ -1,5 +1,5 @@
 {
-  "name": "beryl-repo-tools",
+  "name": "berylx-repo-tools",
   "private": true,
   "scripts": {
     "format": "prettier --write \"**/*.{md,yml,yaml,json}\"",

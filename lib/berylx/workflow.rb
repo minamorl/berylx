@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Beryl
+module Berylx
   class Workflow
     def self.[](name, &block)
       new(name, block.call)

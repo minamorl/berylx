@@ -1,6 +1,6 @@
 # Errors and recovery
 
-Beryl keeps failure inside the workflow as `Err(partial_lay, error)`. This preserves state produced
+Berylx keeps failure inside the workflow as `Err(partial_lay, error)`. This preserves state produced
 before the failure and makes compensation an ordinary, visible part of composition.
 
 ## The error path
@@ -23,7 +23,7 @@ flowchart TD
 Use `reject` for expected business failures:
 
 ```ruby
-charge = Beryl::Task[:charge] do |lay|
+charge = Berylx::Task[:charge] do |lay|
   if card_declined?(lay)
     lay[:attempted].set(true).reject(:payment_failed, 'card declined')
   else
@@ -56,11 +56,11 @@ result = lay[:account_id].required(:missing_account_id)
 A task catches `StandardError` and converts it into an `Err` while keeping the lay it received:
 
 ```ruby
-explode = Beryl::Task[:explode] do |_lay|
+explode = Berylx::Task[:explode] do |_lay|
   raise 'gateway timeout'
 end
 
-result = (mark_attempt >> explode).call(Beryl::Lay[])
+result = (mark_attempt >> explode).call(Berylx::Lay[])
 
 result.code
 # => :RuntimeError
@@ -70,7 +70,7 @@ result.focus.to_h
 ```
 
 When integration code needs exceptions again, call `unwrap`. If the error has an original Ruby
-cause, that exception is raised; otherwise Beryl raises `Beryl::Error`.
+cause, that exception is raised; otherwise Berylx raises `Berylx::Error`.
 
 ## Short-circuiting
 
@@ -91,7 +91,7 @@ Place `Catch` where a sequence should be allowed to recover and continue:
 workflow =
   charge >>
   create_subscription >>
-  Beryl::Catch[:refund] { |error, lay|
+  Berylx::Catch[:refund] { |error, lay|
     lay[:refunded].set(error.message)
   } >>
   notify
@@ -122,8 +122,8 @@ boundary; prefer `Catch` when recovery reads naturally as one stage in a pipelin
 Fatal failures bypass ordinary recovery:
 
 ```ruby
-stop = Beryl::Task[:stop] do |lay|
-  Beryl::Result.err(
+stop = Berylx::Task[:stop] do |lay|
+  Berylx::Result.err(
     lay[:stopped].set(true),
     :stop,
     'stop',
@@ -133,7 +133,7 @@ end
 
 workflow =
   stop >>
-  Beryl::Catch[:ordinary_recovery] { |_error, lay| lay[:recovered].set(true) }
+  Berylx::Catch[:ordinary_recovery] { |_error, lay| lay[:recovered].set(true) }
 ```
 
 The result remains the original fatal `Err`. A boundary must opt in explicitly to handle it:
@@ -141,7 +141,7 @@ The result remains the original fatal `Err`. A boundary must opt in explicitly t
 ```ruby
 workflow =
   stop >>
-  Beryl::Catch[:terminal_recovery, fatal: true] { |error, lay|
+  Berylx::Catch[:terminal_recovery, fatal: true] { |error, lay|
     lay[:recovered].set(error.message)
   }
 ```
@@ -153,7 +153,7 @@ Use fatal recovery sparingly; terminal errors are conservative by default.
 A root commits only `Ok`:
 
 ```ruby
-root = Beryl::Root[charged: false]
+root = Berylx::Root[charged: false]
 result = root | charge
 ```
 

@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
-module Beryl
+module Berylx
   # ==================================================================
-  # Beryl::EffectTree (combinator interpreters) — EffectTree を再オープンして
+  # Berylx::EffectTree (combinator interpreters) — EffectTree を再オープンして
   # parallel / branch / rescue の real interpreter を足す。
   #
   # core (effect_tree.rb) は compile / build / run / handler マップの骨格だけを
-  # 持ち、各合成子の「beryl 圏の algebra」(短絡・merge・回復・trace 付与) は
+  # 持ち、各合成子の「berylx 圏の algebra」(短絡・merge・回復・trace 付与) は
   # ここに置く。darkcore の bind は構造の接ぎ木のみで、圏の algebra は現れない。
-  # Err 判定・失敗合成・回復といった意味はすべて beryl 側のこの site で行う。
+  # Err 判定・失敗合成・回復といった意味はすべて berylx 側のこの site で行う。
   #
   # いずれも legacy 実行 (Parallel#call / Branch#call / Rescue#call) と同一
   # セマンティクスになるよう写している (両走差分検証で保証)。
@@ -102,7 +102,7 @@ module Beryl
     end
 
     # 回復 handler の適用 — Rescue と Sequence 内の Catch 境界で共有する
-    # beryl 圏の algebra。RescueBlock (ブロック handler) はエラーと focus を
+    # berylx 圏の algebra。RescueBlock (ブロック handler) はエラーと focus を
     # 受け取り、それ以外の node handler は focus を受け取って結果封筒を返す。
     # handler 自身が Err を返したら回復失敗として元エラーを metadata に畳む。
     def recover(handler, error_result)

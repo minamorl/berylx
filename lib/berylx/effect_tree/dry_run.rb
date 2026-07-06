@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
-module Beryl
+module Berylx
   # ==================================================================
-  # Beryl::EffectTree (dry-run aspect) — EffectTree を再オープンして
+  # Berylx::EffectTree (dry-run aspect) — EffectTree を再オープンして
   # dry-run interpreter を足す。real interpreter (effect_tree.rb) と
   # 同じ Effect 木を共有し、handler マップだけを差し替えることで
   # 「実行せず計画 (Task 名の列) を列挙する」圏を選ぶ。

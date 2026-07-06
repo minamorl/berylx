@@ -1,61 +1,61 @@
 # frozen_string_literal: true
 
 require 'minitest/autorun'
-require 'beryl'
+require 'berylx'
 
-# darkcore substrate は beryl の必須依存。EffectTree は core (require 'beryl') の
+# darkcore substrate は berylx の必須依存。EffectTree は core (require 'berylx') の
 # 一部として無条件に読み込まれるので、ここでの遅延 require / skip ガードは不要。
 
-# beryl workflow の Sequence(>>) を darkcore の単一 Effect 型へ載せ替えた
-# adapter (Beryl::EffectTree) の検証。
+# berylx workflow の Sequence(>>) を darkcore の単一 Effect 型へ載せ替えた
+# adapter (Berylx::EffectTree) の検証。
 #
 # 主目的:
-#   1. 同一 workflow を legacy 実行 (Beryl.run) と effect_tree 実行
-#      (Beryl::EffectTree.run) の両方で走らせ、結果 lay と Err 封筒が
+#   1. 同一 workflow を legacy 実行 (Berylx.run) と effect_tree 実行
+#      (Berylx::EffectTree.run) の両方で走らせ、結果 lay と Err 封筒が
 #      一致すること (移行期の dual-run 差分検証)。
 #   2. Task を不透明サンクでなく tagged effect ノードで表していること。
 #   3. handler 差し替えだけで dry-run (実行せず計画列挙) できること。
 class EffectTreeTest < Minitest::Test
   # --- テスト用 workflow ------------------------------------------
   def strip
-    Beryl::Task[:strip] { |lay| lay[:name].update(&:strip) }
+    Berylx::Task[:strip] { |lay| lay[:name].update(&:strip) }
   end
 
   def greet
-    Beryl::Task[:greet] { |lay| lay[:greeting].set("hello #{lay[:name].get}") }
+    Berylx::Task[:greet] { |lay| lay[:greeting].set("hello #{lay[:name].get}") }
   end
 
   def boom
-    Beryl::Task[:boom] { |_lay| raise 'kaboom' }
+    Berylx::Task[:boom] { |_lay| raise 'kaboom' }
   end
 
   def domain_reject
-    Beryl::Task[:validate] { |lay| lay.reject(:invalid, 'name is blank') }
+    Berylx::Task[:validate] { |lay| lay.reject(:invalid, 'name is blank') }
   end
 
   # --- 第二段 (parallel / branch / rescue) 用の workflow 部品 --------
   def set_a
-    Beryl::Task[:set_a] { |lay| lay[:a].set(1) }
+    Berylx::Task[:set_a] { |lay| lay[:a].set(1) }
   end
 
   def set_b
-    Beryl::Task[:set_b] { |lay| lay[:b].set(2) }
+    Berylx::Task[:set_b] { |lay| lay[:b].set(2) }
   end
 
   def positive_arm
-    Beryl::When[:pos] { |lay| lay[:n].get.positive? } >>
-      Beryl::Task[:mark_positive] { |lay| lay[:sign].set(:positive) }
+    Berylx::When[:pos] { |lay| lay[:n].get.positive? } >>
+      Berylx::Task[:mark_positive] { |lay| lay[:sign].set(:positive) }
   end
 
   def else_arm
-    Beryl::Else >> Beryl::Task[:mark_negative] { |lay| lay[:sign].set(:negative) }
+    Berylx::Else >> Berylx::Task[:mark_negative] { |lay| lay[:sign].set(:negative) }
   end
 
   # --- lay の突き合わせ用ヘルパ (Focus は == を持たないので to_h 比較) --
   def assert_same_envelope(legacy, effect)
     assert_equal legacy.class, effect.class, 'result class (Ok/Err) must match'
 
-    if legacy.is_a?(Beryl::Ok)
+    if legacy.is_a?(Berylx::Ok)
       assert_equal legacy.focus.to_h, effect.focus.to_h, 'Ok lay must match'
     else
       assert_equal legacy.focus.to_h, effect.focus.to_h, 'Err partial_lay must match'
@@ -83,10 +83,10 @@ class EffectTreeTest < Minitest::Test
     workflow = strip >> greet
     input = { name: '  mina  ' }
 
-    legacy = Beryl.run(workflow, input)
-    effect = Beryl::EffectTree.run(workflow, input)
+    legacy = Berylx.run(workflow, input)
+    effect = Berylx::EffectTree.run(workflow, input)
 
-    assert_instance_of Beryl::Ok, effect
+    assert_instance_of Berylx::Ok, effect
     assert_equal({ name: 'mina', greeting: 'hello mina' }, effect.focus.to_h)
     assert_same_envelope(legacy, effect)
   end
@@ -99,10 +99,10 @@ class EffectTreeTest < Minitest::Test
     workflow = strip >> boom >> greet
     input = { name: '  mina  ' }
 
-    legacy = Beryl.run(workflow, input)
-    effect = Beryl::EffectTree.run(workflow, input)
+    legacy = Berylx.run(workflow, input)
+    effect = Berylx::EffectTree.run(workflow, input)
 
-    assert_instance_of Beryl::Err, effect
+    assert_instance_of Berylx::Err, effect
     assert_equal :boom, effect.failed_node
     # 短絡: boom 直前 (strip 適用済) の partial_lay を保持し、greeting は付かない。
     assert_equal({ name: 'mina' }, effect.focus.to_h)
@@ -116,10 +116,10 @@ class EffectTreeTest < Minitest::Test
     workflow = domain_reject >> greet
     input = { name: '' }
 
-    legacy = Beryl.run(workflow, input)
-    effect = Beryl::EffectTree.run(workflow, input)
+    legacy = Berylx.run(workflow, input)
+    effect = Berylx::EffectTree.run(workflow, input)
 
-    assert_instance_of Beryl::Err, effect
+    assert_instance_of Berylx::Err, effect
     assert_equal :invalid, effect.code
     assert_same_envelope(legacy, effect)
   end
@@ -128,8 +128,8 @@ class EffectTreeTest < Minitest::Test
   # 1'''. 単一 Task (Sequence でない) も両実行で一致
   # ================================================================
   def test_single_task_matches_legacy
-    legacy = Beryl.run(strip, { name: '  mina  ' })
-    effect = Beryl::EffectTree.run(strip, { name: '  mina  ' })
+    legacy = Berylx.run(strip, { name: '  mina  ' })
+    effect = Berylx::EffectTree.run(strip, { name: '  mina  ' })
 
     assert_same_envelope(legacy, effect)
     assert_equal({ name: 'mina' }, effect.focus.to_h)
@@ -139,15 +139,15 @@ class EffectTreeTest < Minitest::Test
   # 2. Task は tagged effect ノードとして表れる (不透明サンクでない)
   # ================================================================
   def test_task_is_a_tagged_effect_node_not_opaque_thunk
-    effect = Beryl::EffectTree.build(strip >> greet, { name: '  mina  ' })
+    effect = Berylx::EffectTree.build(strip >> greet, { name: '  mina  ' })
 
-    # 木の最初のノードは :beryl_task タグを持ち、payload は [Task, Focus]。
-    assert_equal Beryl::EffectTree::TASK, effect.tag
+    # 木の最初のノードは :berylx_task タグを持ち、payload は [Task, Focus]。
+    assert_equal Berylx::EffectTree::TASK, effect.tag
     task, focus = effect.payload
 
-    assert_instance_of Beryl::Task, task
+    assert_instance_of Berylx::Task, task
     assert_equal :strip, task.name # payload を検査できる = 不透明でない
-    assert_instance_of Beryl::Focus, focus
+    assert_instance_of Berylx::Focus, focus
   end
 
   # ================================================================
@@ -157,12 +157,12 @@ class EffectTreeTest < Minitest::Test
     # boom は実行されれば raise するが、dry-run は block を呼ばないので安全。
     workflow = strip >> boom >> greet
 
-    dry = Beryl::EffectTree.dry_run(workflow, { name: '  mina  ' })
+    dry = Berylx::EffectTree.dry_run(workflow, { name: '  mina  ' })
 
     # 計画は全ステップを順に列挙する (短絡しない)。
     assert_equal %i[strip boom greet], dry.steps
     # 実行していないので lay は入力のまま (strip も適用されない)。
-    assert_instance_of Beryl::Ok, dry.result
+    assert_instance_of Berylx::Ok, dry.result
     assert_equal({ name: '  mina  ' }, dry.result.focus.to_h)
   end
 
@@ -171,8 +171,8 @@ class EffectTreeTest < Minitest::Test
     # real 実行と dry-run を切り替えられること (aspect_via_handler)。
     workflow = strip >> greet
 
-    real = Beryl::EffectTree.run(workflow, { name: '  mina  ' })
-    dry  = Beryl::EffectTree.dry_run(workflow, { name: '  mina  ' })
+    real = Berylx::EffectTree.run(workflow, { name: '  mina  ' })
+    dry  = Berylx::EffectTree.dry_run(workflow, { name: '  mina  ' })
 
     assert_equal({ name: 'mina', greeting: 'hello mina' }, real.focus.to_h)
     assert_equal %i[strip greet], dry.steps
@@ -187,10 +187,10 @@ class EffectTreeTest < Minitest::Test
     workflow = set_a & set_b # 既定 reducer Merge.deep, on_err :short_circuit
     input = { base: 0 }
 
-    legacy = workflow.call(Beryl::Focus[input])
-    effect = Beryl::EffectTree.run(workflow, input)
+    legacy = workflow.call(Berylx::Focus[input])
+    effect = Berylx::EffectTree.run(workflow, input)
 
-    assert_instance_of Beryl::Ok, effect
+    assert_instance_of Berylx::Ok, effect
     assert_equal({ base: 0, a: 1, b: 2 }, effect.focus.to_h)
     assert_same_envelope(legacy, effect)
   end
@@ -200,10 +200,10 @@ class EffectTreeTest < Minitest::Test
     workflow = boom & domain_reject
     input = { name: '' }
 
-    legacy = workflow.call(Beryl::Focus[input])
-    effect = Beryl::EffectTree.run(workflow, input)
+    legacy = workflow.call(Berylx::Focus[input])
+    effect = Berylx::EffectTree.run(workflow, input)
 
-    assert_instance_of Beryl::Err, effect
+    assert_instance_of Berylx::Err, effect
     assert_equal :boom, effect.failed_node
     assert_empty effect.parallel_errors # short_circuit は集約しない
     assert_same_envelope(legacy, effect)
@@ -214,10 +214,10 @@ class EffectTreeTest < Minitest::Test
     workflow = (boom & domain_reject).accumulate
     input = { name: '' }
 
-    legacy = workflow.call(Beryl::Focus[input])
-    effect = Beryl::EffectTree.run(workflow, input)
+    legacy = workflow.call(Berylx::Focus[input])
+    effect = Berylx::EffectTree.run(workflow, input)
 
-    assert_instance_of Beryl::Err, effect
+    assert_instance_of Berylx::Err, effect
     assert_equal :parallel_failed, effect.code
     assert_equal 2, effect.parallel_errors.size
     assert_equal %i[RuntimeError invalid], effect.parallel_errors.map(&:code)
@@ -228,9 +228,9 @@ class EffectTreeTest < Minitest::Test
     # result.parallel_default: 明示しなければ short_circuit で走る。
     workflow = boom & domain_reject
 
-    effect = Beryl::EffectTree.run(workflow, { name: '' })
+    effect = Berylx::EffectTree.run(workflow, { name: '' })
 
-    assert_instance_of Beryl::Err, effect
+    assert_instance_of Berylx::Err, effect
     refute_equal :parallel_failed, effect.code # 集約していない = short_circuit
     assert_empty effect.parallel_errors
   end
@@ -242,10 +242,10 @@ class EffectTreeTest < Minitest::Test
     workflow = positive_arm | else_arm
     input = { n: 5 }
 
-    legacy = workflow.call(Beryl::Focus[input])
-    effect = Beryl::EffectTree.run(workflow, input)
+    legacy = workflow.call(Berylx::Focus[input])
+    effect = Berylx::EffectTree.run(workflow, input)
 
-    assert_instance_of Beryl::Ok, effect
+    assert_instance_of Berylx::Ok, effect
     assert_equal({ n: 5, sign: :positive }, effect.focus.to_h)
     assert_same_envelope(legacy, effect)
   end
@@ -254,10 +254,10 @@ class EffectTreeTest < Minitest::Test
     workflow = positive_arm | else_arm
     input = { n: -3 }
 
-    legacy = workflow.call(Beryl::Focus[input])
-    effect = Beryl::EffectTree.run(workflow, input)
+    legacy = workflow.call(Berylx::Focus[input])
+    effect = Berylx::EffectTree.run(workflow, input)
 
-    assert_instance_of Beryl::Ok, effect
+    assert_instance_of Berylx::Ok, effect
     assert_equal({ n: -3, sign: :negative }, effect.focus.to_h)
     assert_same_envelope(legacy, effect)
   end
@@ -266,10 +266,10 @@ class EffectTreeTest < Minitest::Test
     workflow = positive_arm # Else 無し: どの arm も match しない
     input = { n: -1 }
 
-    legacy = workflow.call(Beryl::Focus[input])
-    effect = Beryl::EffectTree.run(workflow, input)
+    legacy = workflow.call(Berylx::Focus[input])
+    effect = Berylx::EffectTree.run(workflow, input)
 
-    assert_instance_of Beryl::Err, effect
+    assert_instance_of Berylx::Err, effect
     assert_equal :no_branch_matched, effect.code
     assert_same_envelope(legacy, effect)
   end
@@ -281,10 +281,10 @@ class EffectTreeTest < Minitest::Test
     workflow = set_a.rescue_with { |_error, focus| focus[:healed].set(true) }
     input = { base: 0 }
 
-    legacy = workflow.call(Beryl::Focus[input])
-    effect = Beryl::EffectTree.run(workflow, input)
+    legacy = workflow.call(Berylx::Focus[input])
+    effect = Berylx::EffectTree.run(workflow, input)
 
-    assert_instance_of Beryl::Ok, effect
+    assert_instance_of Berylx::Ok, effect
     assert_equal({ base: 0, a: 1 }, effect.focus.to_h) # handler は発火しない
     assert_same_envelope(legacy, effect)
   end
@@ -293,10 +293,10 @@ class EffectTreeTest < Minitest::Test
     workflow = boom.rescue_with { |_error, focus| focus[:healed].set(true) }
     input = { base: 0 }
 
-    legacy = workflow.call(Beryl::Focus[input])
-    effect = Beryl::EffectTree.run(workflow, input)
+    legacy = workflow.call(Berylx::Focus[input])
+    effect = Berylx::EffectTree.run(workflow, input)
 
-    assert_instance_of Beryl::Ok, effect
+    assert_instance_of Berylx::Ok, effect
     assert_equal({ base: 0, healed: true }, effect.focus.to_h)
     assert_same_envelope(legacy, effect)
   end
@@ -305,10 +305,10 @@ class EffectTreeTest < Minitest::Test
     workflow = boom.rescue_with { |_error, focus| focus.reject(:heal_failed, 'could not heal') }
     input = { base: 0 }
 
-    legacy = workflow.call(Beryl::Focus[input])
-    effect = Beryl::EffectTree.run(workflow, input)
+    legacy = workflow.call(Berylx::Focus[input])
+    effect = Berylx::EffectTree.run(workflow, input)
 
-    assert_instance_of Beryl::Err, effect
+    assert_instance_of Berylx::Err, effect
     assert_equal :heal_failed, effect.code
     assert_equal :rescue, effect.failed_node
     assert_same_envelope(legacy, effect)
@@ -320,30 +320,30 @@ class EffectTreeTest < Minitest::Test
   def test_dry_run_parallel_enumerates_all_branches_without_executing
     workflow = set_a & boom & set_b # boom は実行されれば raise する
 
-    dry = Beryl::EffectTree.dry_run(workflow, { base: 0 })
+    dry = Berylx::EffectTree.dry_run(workflow, { base: 0 })
 
     assert_equal %i[set_a boom set_b], dry.steps # 全 branch を列挙
-    assert_instance_of Beryl::Ok, dry.result
+    assert_instance_of Berylx::Ok, dry.result
     assert_equal({ base: 0 }, dry.result.focus.to_h) # 副作用ゼロ
   end
 
   def test_dry_run_branch_enumerates_matched_arm_only
     workflow = positive_arm | else_arm
 
-    dry = Beryl::EffectTree.dry_run(workflow, { n: 5 })
+    dry = Berylx::EffectTree.dry_run(workflow, { n: 5 })
 
     assert_equal %i[mark_positive], dry.steps # match した arm のみ
-    assert_instance_of Beryl::Ok, dry.result
+    assert_instance_of Berylx::Ok, dry.result
     assert_equal({ n: 5 }, dry.result.focus.to_h)
   end
 
   def test_dry_run_rescue_enumerates_body_only
     workflow = boom.rescue_with { |_error, focus| focus[:healed].set(true) }
 
-    dry = Beryl::EffectTree.dry_run(workflow, { base: 0 })
+    dry = Berylx::EffectTree.dry_run(workflow, { base: 0 })
 
     assert_equal %i[boom], dry.steps # body のみ、handler は発火しない
-    assert_instance_of Beryl::Ok, dry.result
+    assert_instance_of Berylx::Ok, dry.result
     assert_equal({ base: 0 }, dry.result.focus.to_h)
   end
 end

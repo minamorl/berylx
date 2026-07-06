@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Beryl
+module Berylx
   class Graph
     def self.from(node, name: nil)
       new(name, node)
@@ -22,7 +22,7 @@ module Beryl
     end
 
     def to_dot
-      graph_name = @name || :beryl
+      graph_name = @name || :berylx
       builder = DotBuilder.new
       builder.build(@root)
       lines = ["digraph #{quote(graph_name)} {"]

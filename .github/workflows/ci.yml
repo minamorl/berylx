@@ -22,13 +22,13 @@ jobs:
       matrix:
         ruby: ["3.2", "3.3", "3.4", "4.0"]
     steps:
-      # beryl の Gemfile は移行期に darkcore を sibling path 依存で参照する
+      # berylx の Gemfile は移行期に darkcore を sibling path 依存で参照する
       # (gem 'darkcore', path: '../darkcore-ruby')。CI では隣接ディレクトリへ
       # 両リポジトリを checkout してから bundle しないと解決できず exit 13 で落ちる。
-      - name: Checkout beryl
+      - name: Checkout berylx
         uses: actions/checkout@v4
         with:
-          path: beryl
+          path: berylx
 
       - name: Checkout darkcore-ruby (sibling path dependency)
         uses: actions/checkout@v4
@@ -41,23 +41,23 @@ jobs:
         with:
           ruby-version: ${{ matrix.ruby }}
           bundler-cache: true
-          working-directory: beryl
+          working-directory: berylx
 
       - name: Run tests
-        working-directory: beryl
+        working-directory: berylx
         run: bundle exec rake test
 
       - name: Run RuboCop
-        working-directory: beryl
+        working-directory: berylx
         run: bundle exec rubocop
 
       - name: Syntax-check examples
-        working-directory: beryl
+        working-directory: berylx
         run: ruby -c examples/roda_checkout_app.rb
 
       - name: Build gem
-        working-directory: beryl
-        run: gem build beryl.gemspec
+        working-directory: berylx
+        run: gem build berylx.gemspec
 
   prettier:
     name: Prettier

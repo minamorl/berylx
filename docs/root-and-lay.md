@@ -44,13 +44,13 @@ Avoid treating `root | validate | charge` as an atomic root execution. The first
 ## Create and inspect a root
 
 ```ruby
-root = Beryl::Root[
+root = Berylx::Root[
   request: { id: 'req_1' },
   user: { id: 1, name: 'mina' }
 ]
 
 # Convenience constructor
-same_shape = Beryl.root(request: { id: 'req_1' })
+same_shape = Berylx.root(request: { id: 'req_1' })
 ```
 
 `state` and `to_h` expose the committed Ruby value. `to_lay` creates the value passed to tasks.
@@ -70,7 +70,7 @@ Each `[]` adds a path to the focus. Reads and updates operate at that path while
 complete state.
 
 ```ruby
-lay = Beryl::Lay[user: { id: 1, name: 'mina' }]
+lay = Berylx::Lay[user: { id: 1, name: 'mina' }]
 
 renamed = lay[:user][:name].update(&:upcase)
 enriched = renamed[:user].put(:role, 'admin')
@@ -91,7 +91,7 @@ The update operations are:
 Task bodies should return the new lay:
 
 ```ruby
-promote = Beryl::Task[:promote] do |lay|
+promote = Berylx::Task[:promote] do |lay|
   lay[:user].put(:role, 'admin')
 end
 ```
@@ -121,11 +121,11 @@ See [Errors and recovery](error-handling.md) for how failures move through a wor
 
 ## Running without a root
 
-Use `Beryl::Lay[...]` directly for unit tests or pure workflow evaluation. No external state is
+Use `Berylx::Lay[...]` directly for unit tests or pure workflow evaluation. No external state is
 committed:
 
 ```ruby
-input = Beryl::Lay[user: { name: 'mina' }]
+input = Berylx::Lay[user: { name: 'mina' }]
 result = promote.call(input)
 
 result.focus.to_h
@@ -138,7 +138,7 @@ input.to_h
 A `Flow` can provide the same explicit execution boundary:
 
 ```ruby
-result = Beryl::Flow[Beryl::Lay[user: { name: 'mina' }]].call(promote)
+result = Berylx::Flow[Berylx::Lay[user: { name: 'mina' }]].call(promote)
 ```
 
 ## Commit semantics
@@ -147,9 +147,9 @@ A successful workflow run adopts its final lay. A failed run exposes its partial
 root unchanged.
 
 ```ruby
-root = Beryl::Root[charged: false]
+root = Berylx::Root[charged: false]
 
-fail_after_charge = Beryl::Task[:fail_after_charge] do |lay|
+fail_after_charge = Berylx::Task[:fail_after_charge] do |lay|
   lay[:charged].set(true).reject(:payment_failed, 'payment failed')
 end
 
@@ -176,7 +176,7 @@ adopts that value's focus.
 A subscriber receives the current snapshot immediately and every later commit event:
 
 ```ruby
-root = Beryl::Root[count: 0]
+root = Berylx::Root[count: 0]
 
 unsubscribe = root.subscribe do |event|
   p event

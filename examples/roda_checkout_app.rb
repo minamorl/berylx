@@ -2,7 +2,7 @@
 
 # A full Hono-like Ruby HTTP application using Roda + Rack + Sequel.
 #
-# This is intentionally not Rails. The app surface is a tiny router; Beryl only
+# This is intentionally not Rails. The app surface is a tiny router; Berylx only
 # describes the business flow. Persistence, payment, and mail delivery are plain
 # Ruby dependencies carried by Lay.
 #
@@ -10,7 +10,7 @@
 #   gem "roda"
 #   gem "sequel"
 #   gem "sqlite3"
-#   gem "beryl"
+#   gem "berylx"
 #
 #   rackup examples/config.ru
 
@@ -19,7 +19,7 @@ require 'securerandom'
 require 'time'
 require 'roda'
 require 'sequel'
-require 'beryl'
+require 'berylx'
 
 DATABASE_URL = ENV.fetch('DATABASE_URL', 'sqlite://db/development.sqlite3')
 DB = Sequel.connect(DATABASE_URL)
@@ -167,7 +167,7 @@ module CheckoutWorkflow
   module_function
 
   require_lay =
-    Beryl::Task[:require_lay] do |lay|
+    Berylx::Task[:require_lay] do |lay|
       next lay.reject(:missing_http_request, 'lay[:http][:request] is required') unless lay[:http][:request].get
       next lay.reject(:missing_db, 'lay[:deps][:db] is required') unless lay[:deps][:db].get
       next lay.reject(:missing_payments, 'lay[:deps][:payments] is required') unless lay[:deps][:payments].get
@@ -179,7 +179,7 @@ module CheckoutWorkflow
     end
 
   read_json_body =
-    Beryl::Task[:read_json_body] do |lay|
+    Berylx::Task[:read_json_body] do |lay|
       request = lay[:http][:request].get
       body = request.body.read
       request.body.rewind if request.body.respond_to?(:rewind)
@@ -195,7 +195,7 @@ module CheckoutWorkflow
     end
 
   normalize_input =
-    Beryl::Task[:normalize_input] do |lay|
+    Berylx::Task[:normalize_input] do |lay|
       input = lay[:input].get
 
       user_id = Integer(input.fetch('user_id'))
@@ -212,7 +212,7 @@ module CheckoutWorkflow
     end
 
   load_user =
-    Beryl::Task[:load_user] do |lay|
+    Berylx::Task[:load_user] do |lay|
       db = lay[:deps][:db].get
       user_id = lay[:checkout][:user_id].get
       user = db[:users].where(id: user_id).first
@@ -223,7 +223,7 @@ module CheckoutWorkflow
     end
 
   load_plan =
-    Beryl::Task[:load_plan] do |lay|
+    Berylx::Task[:load_plan] do |lay|
       db = lay[:deps][:db].get
       plan_id = lay[:checkout][:plan_id].get
       plan = db[:plans].where(id: plan_id, active: true).first
@@ -234,7 +234,7 @@ module CheckoutWorkflow
     end
 
   reject_duplicate_subscription =
-    Beryl::Task[:reject_duplicate_subscription] do |lay|
+    Berylx::Task[:reject_duplicate_subscription] do |lay|
       db = lay[:deps][:db].get
       user = lay[:checkout][:user].get
       existing = db[:subscriptions].where(user_id: user.fetch(:id), status: 'active').first
@@ -245,7 +245,7 @@ module CheckoutWorkflow
     end
 
   create_charge =
-    Beryl::Task[:create_charge] do |lay|
+    Berylx::Task[:create_charge] do |lay|
       payments = lay[:deps][:payments].get
       request_id = lay[:http][:request_id].get
       user = lay[:checkout][:user].get
@@ -264,7 +264,7 @@ module CheckoutWorkflow
     end
 
   create_subscription =
-    Beryl::Task[:create_subscription] do |lay|
+    Berylx::Task[:create_subscription] do |lay|
       db = lay[:deps][:db].get
       user = lay[:checkout][:user].get
       plan = lay[:checkout][:plan].get
@@ -288,7 +288,7 @@ module CheckoutWorkflow
     end
 
   deliver_receipt =
-    Beryl::Task[:deliver_receipt] do |lay|
+    Berylx::Task[:deliver_receipt] do |lay|
       mailer = lay[:deps][:mailer].get
       request_id = lay[:http][:request_id].get
       user = lay[:checkout][:user].get
@@ -305,7 +305,7 @@ module CheckoutWorkflow
     end
 
   write_success_audit_log =
-    Beryl::Task[:write_success_audit_log] do |lay|
+    Berylx::Task[:write_success_audit_log] do |lay|
       db = lay[:deps][:db].get
       request_id = lay[:http][:request_id].get
       user = lay[:checkout][:user].get
@@ -326,7 +326,7 @@ module CheckoutWorkflow
     end
 
   capture_failure =
-    Beryl::Task[:capture_failure] do |lay|
+    Berylx::Task[:capture_failure] do |lay|
       failure = lay[:failure].get
       next lay unless failure
 
@@ -336,7 +336,7 @@ module CheckoutWorkflow
     end
 
   refund_charge_if_needed =
-    Beryl::Task[:refund_charge_if_needed] do |lay|
+    Berylx::Task[:refund_charge_if_needed] do |lay|
       charge = lay[:checkout][:charge].get
       next lay unless charge
 
@@ -355,7 +355,7 @@ module CheckoutWorkflow
     end
 
   record_failure =
-    Beryl::Task[:record_failure] do |lay|
+    Berylx::Task[:record_failure] do |lay|
       db = lay[:deps][:db].get
       request_id = lay[:http][:request_id].get
       failure = lay[:checkout][:failure].get
@@ -376,7 +376,7 @@ module CheckoutWorkflow
     end
 
   return_failure =
-    Beryl::Task[:return_failure] do |lay|
+    Berylx::Task[:return_failure] do |lay|
       failure = lay[:checkout][:failure].get
       lay.reject(failure.fetch(:code).to_sym, failure.fetch(:message).to_s)
     rescue KeyError => e
@@ -384,15 +384,15 @@ module CheckoutWorkflow
     end
 
   checkout =
-    Beryl::Workflow[:checkout] do
+    Berylx::Workflow[:checkout] do
       require_lay >>
         read_json_body >>
         normalize_input >>
-        (load_user & load_plan).reduce(Beryl::Merge.deep) >>
+        (load_user & load_plan).reduce(Berylx::Merge.deep) >>
         reject_duplicate_subscription >>
         create_charge >>
         create_subscription >>
-        (deliver_receipt & write_success_audit_log).reduce(Beryl::Merge.deep)
+        (deliver_receipt & write_success_audit_log).reduce(Berylx::Merge.deep)
     end
 
   checkout.body.rescue_with(:capture_exception) do |error, lay|
@@ -419,7 +419,7 @@ class App < Roda
 
   route do |r|
     r.root do
-      { ok: true, service: 'beryl-roda-checkout' }
+      { ok: true, service: 'berylx-roda-checkout' }
     end
 
     r.on 'api' do
@@ -427,7 +427,7 @@ class App < Roda
         request_id = r.env['HTTP_X_REQUEST_ID'] || SecureRandom.uuid
 
         state =
-          Beryl::State[
+          Berylx::State[
             http: {
               request: r,
               request_id: request_id
@@ -442,14 +442,14 @@ class App < Roda
         result = CheckoutWorkflow.call(state)
 
         case result
-        in Beryl::Ok(focus)
+        in Berylx::Ok(focus)
           response.status = 201
           {
             subscription: focus[:checkout][:subscription].get,
             mail_delivery: focus[:checkout][:mail_delivery].get,
             audit_log_id: focus[:checkout][:audit_log_id].get
           }
-        in Beryl::Err(focus, code, message, _cause)
+        in Berylx::Err(focus, code, message, _cause)
           response.status = error_status(code)
           {
             error: code,

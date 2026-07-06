@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Beryl
+module Berylx
   class Flow
     def self.[](focus)
       new(focus)
@@ -13,7 +13,7 @@ module Beryl
     end
 
     # 実行の唯一のエントリ。合成子でも単発 Task でも EffectTree (darkcore
-    # Effect 木) を必ず通す。Task は葉として EffectTree の :beryl_task handler が
+    # Effect 木) を必ず通す。Task は葉として EffectTree の :berylx_task handler が
     # Task#call を呼ぶ。
     def call(node)
       EffectTree.run(node, @focus)

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Beryl
+module Berylx
   class Parallel
     attr_reader :branches, :reducer, :on_err
 

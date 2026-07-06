@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Beryl
+module Berylx
   Ok = Data.define(:focus) do
     def |(other)
       Result.bind(self) { |current| other.call(current) }

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-module Beryl
+module Berylx
   class Focus
     MISSING = Object.new.freeze
 
@@ -70,7 +70,7 @@ module Beryl
     end
 
     def inspect
-      "#<Beryl::Focus path=#{@path.inspect} value=#{get.inspect}>"
+      "#<Berylx::Focus path=#{@path.inspect} value=#{get.inspect}>"
     end
 
     private

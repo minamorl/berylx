@@ -1,16 +1,16 @@
 # frozen_string_literal: true
 
-require_relative 'lib/beryl/version'
+require_relative 'lib/berylx/version'
 
 Gem::Specification.new do |spec|
-  spec.name = 'beryl'
-  spec.version = Beryl::VERSION
+  spec.name = 'berylx'
+  spec.version = Berylx::VERSION
   spec.summary = 'Graphable workflows over focused Ruby state'
   spec.description = 'A Ruby gem for composing named tasks into graphable workflows over focused state.'
   spec.authors = ['minamorl']
   spec.email = ['minamorl@users.noreply.github.com']
   spec.license = 'MIT'
-  spec.homepage = 'https://github.com/minamorl/beryl'
+  spec.homepage = 'https://github.com/minamorl/berylx'
 
   spec.required_ruby_version = '>= 3.2'
   spec.metadata['rubygems_mfa_required'] = 'true'
@@ -24,6 +24,6 @@ Gem::Specification.new do |spec|
   ]
   spec.require_paths = ['lib']
 
-  # darkcore は beryl workflow の唯一の実行基盤 (EffectTree substrate)。必須依存。
+  # darkcore は berylx workflow の唯一の実行基盤 (EffectTree substrate)。必須依存。
   spec.add_dependency 'darkcore'
 end
