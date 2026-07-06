@@ -52,6 +52,17 @@ require 'beryl'
 
 Beryl requires Ruby 3.2 or newer and is tested through Ruby 4.0.
 
+## Execution substrate
+
+The surface API above is all you write. Under it, every workflow runs on a single substrate: the
+[darkcore](https://github.com/minamorl/darkcore-ruby) Effect tree (a Freer monad). Beryl compiles
+`Task`, sequence, parallel, branch, and rescue into one kind of tagged effect and interprets them
+with `Beryl::EffectTree` on darkcore's trampoline. There is no second, native execution path.
+
+Because execution is just an effect tree interpreted by a handler map, cross-cutting aspects (retry,
+dry-run, audit) are added by **swapping the handler map** — the workflow itself is never rewritten.
+`darkcore` is a required runtime dependency.
+
 ## Quick start
 
 Define named state transitions, compose them first, then run the complete workflow from the root:
