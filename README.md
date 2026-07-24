@@ -57,11 +57,46 @@ Berylx requires Ruby 3.2 or newer and is tested through Ruby 4.0.
 The surface API above is all you write. Under it, every workflow runs on a single substrate: the
 [darkcore](https://github.com/minamorl/darkcore-ruby) Effect tree (a Freer monad). Berylx compiles
 `Task`, sequence, parallel, branch, and rescue into one kind of tagged effect and interprets them
-with `Berylx::EffectTree` on darkcore's trampoline. There is no second, native execution path.
+with `Berylx::EffectTree` on darkcore's trampoline. There is no second workflow representation.
 
 Because execution is just an effect tree interpreted by a handler map, cross-cutting aspects (retry,
 dry-run, audit) are added by **swapping the handler map** — the workflow itself is never rewritten.
 `darkcore` is a required runtime dependency.
+
+## Performance and the native bridge
+
+The default (real) category has two evaluators with identical observable behavior:
+
+- **Pure Ruby fold** — the reference implementation and single source of the semantics (`Task#call`
+  envelope normalization, `recover`, parallel failure merging live here and only here).
+- **`berylx_native` C bridge** — an accelerator that walks the same nodes iteratively and delegates
+  every piece of berylx algebra back to the Ruby single source. It only takes over when the handler
+  map is the default one; any swapped handler map (dry-run, audit, retry, your own category) runs on
+  the pure Ruby fold as before.
+
+The bridge compiles automatically on `gem install` (and via `rake compile` in development). If the
+extension cannot be built or loaded, berylx falls back to pure Ruby silently; `BERYLX_NATIVE=0`
+forces the fallback at runtime. A differential test suite (`test/native_equivalence_test.rb`) pins
+both evaluators to structurally identical result envelopes across every combinator and failure path.
+
+Measured on a 1000-step task chain with trivial bodies (`bench/bench.rb`, Ruby 3.3, no YJIT):
+
+| engine                                         | time    | per step |
+| ---------------------------------------------- | ------- | -------- |
+| berylx ≤ 0.9 (left-associated bind, O(n²))     | 345 ms  | 345 µs   |
+| berylx pure Ruby (right-associated bind, O(n)) | 3.4 ms  | 3.4 µs   |
+| berylx + native bridge                         | 0.54 ms | 0.54 µs  |
+| naive Freer in Rust, `--release` + LTO (O(n²)) | 7.5 ms  | 7.5 µs   |
+| same O(n) Freer in Rust                        | 21 µs   | 21 ns    |
+| direct walker in Rust (floor)                  | 1.4 µs  | 1.4 ns   |
+
+Two honest readings (`bench/rust_baseline` reproduces the Rust rows, std-only):
+
+- **The algorithm beats the language.** Berylx with the O(n) walk outruns the same naive-Freer
+  design compiled in release-mode Rust by ~14× at n=1000, and the gap widens with n.
+- **The language still sets the floor.** With the same O(n) algorithm on both sides, Rust remains
+  ~25× faster per step; that residue is the cost of Ruby task semantics (`Task#call`), not of the
+  bridge. For workflows whose task bodies do real work, orchestration is no longer the bottleneck.
 
 ## Quick start
 
