@@ -43,9 +43,23 @@ jobs:
           bundler-cache: true
           working-directory: berylx
 
-      - name: Run tests
+      # native bridge を先にコンパイルし、native / pure Ruby の両経路で
+      # 同じテスト (等価性差分テスト含む) を回す。fallback 側は
+      # BERYLX_NATIVE=0 で gate を殺すが、等価性テストは Native.run_entry を
+      # 直接叩くので C interpreter も引き続き検証される。
+      - name: Compile native bridge
+        working-directory: berylx
+        run: bundle exec rake compile
+
+      - name: Run tests (native bridge)
         working-directory: berylx
         run: bundle exec rake test
+
+      - name: Run tests (pure Ruby fallback)
+        working-directory: berylx
+        run: bundle exec rake test
+        env:
+          BERYLX_NATIVE: "0"
 
       - name: Run RuboCop
         working-directory: berylx

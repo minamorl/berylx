@@ -9,6 +9,16 @@ Gemfile.lock
 /.yardoc/
 /doc/
 
+# Native extension build artifacts (berylx_native)
+ext/berylx_native/Makefile
+ext/berylx_native/*.o
+ext/berylx_native/*.so
+ext/berylx_native/*.bundle
+ext/berylx_native/mkmf.log
+lib/berylx_native/
+bench/rust_baseline/target/
+bench/rust_baseline/Cargo.lock
+
 # Node / formatter tooling
 node_modules/
 npm-debug.log*

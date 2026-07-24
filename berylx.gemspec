@@ -18,11 +18,15 @@ Gem::Specification.new do |spec|
 
   spec.files = Dir[
     'lib/**/*.rb',
+    'ext/berylx_native/*.{c,rb}',
     'README.md',
     'LICENSE',
     'AGENTS.md'
   ]
   spec.require_paths = ['lib']
+  # native bridge (real 圏の C interpreter)。ビルドできない環境では
+  # LoadError を握って pure Ruby interpreter へ自動フォールバックする。
+  spec.extensions = ['ext/berylx_native/extconf.rb']
 
   # darkcore は berylx workflow の唯一の実行基盤 (EffectTree substrate)。必須依存。
   spec.add_dependency 'darkcore'
