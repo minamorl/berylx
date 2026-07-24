@@ -164,6 +164,28 @@ Without the `Catch`, the result would be `Err` with `charged: true` in its parti
 | [Composing workflows](docs/workflows.md)      | Tasks, sequencing, branching, parallel execution, reducers, and graphs                    |
 | [Errors and recovery](docs/error-handling.md) | Domain failures, raised exceptions, partial state, Catch, scoped rescue, and fatal errors |
 
+Worked examples live in `examples/`: a Roda + Sequel checkout service (`roda_checkout_app.rb`), and
+a signal-processing flow whose per-sample arithmetic runs at native speed through
+[moissanite](https://github.com/minamorl/moissanite) kernels (`moissanite_signal_workflow.rb`).
+
+## Native-level work inside a workflow
+
+Berylx names the steps and owns the state; it deliberately says nothing about how a step does its
+arithmetic. When a task's inner loop is the bottleneck, moissanite kernels — expression trees built
+from Ruby values and lowered through the system C compiler — slot in as ordinary Task bodies:
+
+```ruby
+Condition = Berylx::Task[:condition] do |lay|
+  out = Moissanite::Buffer.f64(lay[:count].get)
+  CONDITION_KERNEL.call_parallel(out, lay[:samples].get, lay[:count].get)
+  lay[:conditioned].set(out)
+end
+```
+
+No adapter is involved and none is needed: a compiled kernel is just a callable. The effect tree
+stays the linker, so retry, dry-run, and audit still arrive by swapping the handler map, and the
+graph still compiles to DOT with the native step named like any other.
+
 ## When to use Berylx
 
 Berylx fits checkout, onboarding, provisioning, API orchestration, and local saga-style flows where

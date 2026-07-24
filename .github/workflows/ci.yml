@@ -65,9 +65,11 @@ jobs:
         working-directory: berylx
         run: bundle exec rubocop
 
+      # examples は外部 gem (roda/sequel, moissanite) を要求するので実行は
+      # せず、構文だけ全件検査して腐らせない。
       - name: Syntax-check examples
         working-directory: berylx
-        run: ruby -c examples/roda_checkout_app.rb
+        run: for f in examples/*.rb; do ruby -c "$f"; done
 
       - name: Build gem
         working-directory: berylx
