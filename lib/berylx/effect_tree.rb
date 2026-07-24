@@ -75,15 +75,35 @@ module Berylx
       end
     end
 
-    # Sequence を darkcore bind で接ぎ木する。bind は構造の接ぎ木のみで、
+    # Sequence を darkcore bind で右結合に接ぎ木する。bind は構造の接ぎ木のみで、
     # 短絡 (Err) 判定・Catch 境界での回復は継続内 = berylx 圏の algebra site で
     # 行う (darkcore の bind には埋めない)。
+    #
+    # 旧実装は左結合 reduce で、bind のたびに既存継続を再ラップし深い列で
+    # O(n^2) だった (darkcore.spec の free perf.freer_queue が予告した摩擦)。
+    # 右結合は各ステップの effect に「残りを接ぐ」継続を一度だけ bind するので、
+    # 同じ Effect 木・同じ handler 到達順のまま O(n) で走る。
     def compile_sequence(node)
-      lambda do |focus|
-        node.steps.reduce(Darkcore.pure(Result.ok(focus))) do |effect, step|
-          effect.bind { |prev| compile_step(step, prev) }
-        end
+      ->(focus) { sequence_chain(node.steps, 0, Result.ok(focus)) }
+    end
+
+    # steps[index..] を prev (結果封筒) から接ぐ。closed (pure) が返る間は
+    # 木を伸ばさず反復で畳むので、短絡の前送り・Catch 素通りでスタックも
+    # 継続も積まない (トランポリン契約を保つ)。
+    def sequence_chain(steps, index, prev)
+      while index < steps.size
+        effect = compile_step(steps[index], prev)
+        index += 1
+        return sequence_suspend(effect, steps, index) unless effect.closed?
+
+        prev = effect.payload
       end
+      Darkcore.pure(prev)
+    end
+
+    # 開いた作用 (op ノード) に「残りのステップ」を一度だけ接ぐ。
+    def sequence_suspend(effect, steps, index)
+      effect.bind { |nxt| sequence_chain(steps, index, nxt) }
     end
 
     # Sequence の 1 ステップを次の Effect に接ぐ。Catch は Sequence の短絡境界:
@@ -111,7 +131,14 @@ module Berylx
     # workflow 本体 (Effect 木) を darkcore トランポリンで走らせる。
     # handlers を差し替えるだけで圏 (real / dry_run / audit ...) を選ぶ。
     # 戻り値は berylx の結果封筒 Berylx::Ok(lay) / Berylx::Err(partial_lay, error)。
-    def run(node, focus, handlers: real_handlers)
+    #
+    # real 圏 (既定 handler マップのまま) は native bridge が使えるとき
+    # C 拡張の interpreter へ委譲する。handler を差し替えた圏 (dry_run /
+    # audit / retry ...) は従来どおり pure Ruby の fold で走る —
+    # aspect_via_handler の機構はネイティブ化の影響を受けない。
+    def run(node, focus, handlers: REAL_HANDLERS)
+      return Native.run_entry(node, focus) if handlers.equal?(REAL_HANDLERS) && Native.enabled?
+
       Darkcore.fold(build(node, focus), on_return: ->(x) { x }, handlers: handlers)
     end
 
@@ -122,13 +149,18 @@ module Berylx
     # 合成子 handler は自分自身 (handlers) を副木実行に渡すため、木は
     # 同じ圏 (real) のまま再帰する。dry-run 側も同じ再帰構造を持つので、
     # aspect (real / dry) は handler マップの差し替えだけで切り替わる。
+    #
+    # lambda は不変なので一度だけ組んで凍結し、run / 副木実行の既定値として
+    # 共有する (native gate の「real 圏のままか」の同一性判定にも使う)。
+    REAL_HANDLERS = {
+      TASK => ->(payload) { real_task(payload) },
+      PARALLEL => ->(payload) { real_parallel(payload) },
+      BRANCH => ->(payload) { real_branch(payload) },
+      RESCUE => ->(payload) { real_rescue(payload) }
+    }.freeze
+
     def real_handlers
-      {
-        TASK => ->(payload) { real_task(payload) },
-        PARALLEL => ->(payload) { real_parallel(payload) },
-        BRANCH => ->(payload) { real_branch(payload) },
-        RESCUE => ->(payload) { real_rescue(payload) }
-      }
+      REAL_HANDLERS
     end
 
     def real_task(payload)
@@ -167,3 +199,7 @@ require_relative 'effect_tree/combinators'
 # real interpreter と dry interpreter を語り (ファイル) の上でも分離し、
 # aspect が handler マップ差し替えだけで載ることを構造で示す。
 require_relative 'effect_tree/dry_run'
+
+# native bridge (C 拡張の real-圏 interpreter)。拡張が無ければ純 Ruby に
+# 自動フォールバックする任意の加速器で、観測挙動は同一 (差分検証で保証)。
+require_relative 'effect_tree/native'
