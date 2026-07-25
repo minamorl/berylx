@@ -1,0 +1,151 @@
+# frozen_string_literal: true
+
+require 'minitest/autorun'
+require 'berylx'
+
+# Task の body が Effect を返せることの契約 (berylx@1.0)。
+#
+# 0.9 までの穴: substrate.no_opaque_thunk は Task *ノード* の表現しか
+# 縛っておらず、body の中身は縛っていなかった。body 内で起こした作用は
+# effect 木に現れないので、handler マップで選べる圏が Task の粒度で止まり、
+# body 内部の実行水準は handler の外 (プロセス全体の env など) で決まった。
+#
+# 縛る pin:
+#   substrate.task_body_return   berylx.task.body.return in [focus, effect]
+#   substrate.task_body_category berylx.task.body.effect.category = same_handler_map
+#   substrate.aspect_reach       berylx.aspect.reach に task_body_effect を含む
+class TaskBodyEffectTest < Minitest::Test
+  MEASURE = :measure
+
+  def measuring_task(name = :measure_task)
+    Berylx::Task[name] do |lay|
+      Darkcore.op(MEASURE, lay[:x].get).bind do |measured|
+        Darkcore.pure(lay[:y].set(measured))
+      end
+    end
+  end
+
+  # real 圏の handler マップに作用の解釈を足したもの。合成子の handler は
+  # 既定のまま使う (aspect は差分だけ書けばよい)。
+  def category(measure)
+    Berylx::EffectTree.real_handlers.merge(
+      Berylx::EffectTree::TASK => ->(payload) { Berylx::EffectTree.run_task(payload, category(measure)) },
+      MEASURE => measure
+    )
+  end
+
+  def run_with(node, focus, handlers)
+    Berylx::EffectTree.run(node, focus, handlers: handlers)
+  end
+
+  # ------------------------------------------------------------------
+  # body が Effect を返せること。fold を渡さない経路 (Root | Task の直接
+  # 実行 / C interpreter からの委譲) は定義により real 圏なので、real の
+  # handler マップで畳まれる。
+  # ------------------------------------------------------------------
+  def test_body_may_return_an_effect
+    handlers = category(->(x) { x * 10 })
+    result = run_with(measuring_task, { x: 4 }, handlers)
+
+    assert_instance_of Berylx::Ok, result
+    assert_equal 40, result.focus[:y].get
+  end
+
+  def test_body_returning_a_focus_still_works
+    plain = Berylx::Task[:plain] { |lay| lay[:y].set(lay[:x].get + 1) }
+    result = Berylx::Root[x: 4] | plain
+
+    assert_equal 5, result.focus[:y].get
+  end
+
+  # ------------------------------------------------------------------
+  # 芯: **圏の選択が body の内側まで届く**。同じ workflow を書き換えずに、
+  # handler マップを差し替えるだけで body 内の作用の解釈が変わること。
+  # ------------------------------------------------------------------
+  def test_the_same_workflow_reads_differently_under_a_different_category
+    flow = measuring_task >> Berylx::Task[:double] { |lay| lay[:y].set(lay[:y].get * 2) }
+
+    fast = run_with(flow, { x: 4 }, category(->(x) { x * 10 }))
+    canon = run_with(flow, { x: 4 }, category(->(x) { x * 100 }))
+
+    assert_equal 80, fast.focus[:y].get
+    assert_equal 800, canon.focus[:y].get
+  end
+
+  # 同じ木・同じ入力なら圏が違っても一致する、という差分検証がこの機構の
+  # 上に一文で書けること (native 水準と正典水準の突き合わせがこの形になる)。
+  def test_two_categories_agreeing_is_expressible_as_one_statement
+    flow = measuring_task
+    native = run_with(flow, { x: 7 }, category(->(x) { x + x }))
+    oracle = run_with(flow, { x: 7 }, category(->(x) { x * 2 }))
+
+    assert_equal oracle.focus[:y].get, native.focus[:y].get
+  end
+
+  # 作用の解釈が失敗しても結果封筒に入る (result.no_implicit_raise を
+  # body 内の作用まで一貫させる)。
+  def test_a_failing_handler_lands_in_the_result_envelope
+    result = run_with(measuring_task, { x: 4 }, category(->(_) { raise ArgumentError, 'bad measure' }))
+
+    assert_instance_of Berylx::Err, result
+    assert_equal :measure_task, result.error.failed_node
+    assert_equal 'bad measure', result.error.message
+  end
+
+  # 未知タグ (handler マップに対応が無い) も同じ扱いになる。この一貫性で
+  # よいかは spec の open_question task_body.unknown_tag が預かっている。
+  def test_an_unhandled_tag_lands_in_the_result_envelope
+    stray = Berylx::Task[:stray] { |_lay| Darkcore.op(:nobody_handles_this) }
+    result = run_with(stray, { x: 1 }, Berylx::EffectTree.real_handlers)
+
+    assert_instance_of Berylx::Err, result
+    assert_equal :stray, result.error.failed_node
+  end
+
+  # 短絡は変わらない: Err のあとの Task は body ごと発火しない。
+  def test_sequence_still_short_circuits_before_an_effect_body
+    fired = []
+    failing = Berylx::Task[:fail] { |lay| lay.reject(:nope, 'stop here') }
+    watcher = Berylx::Task[:watch] do |lay|
+      fired << :body
+      Darkcore.pure(lay)
+    end
+    result = run_with(failing >> watcher, { x: 1 }, Berylx::EffectTree.real_handlers)
+
+    assert_instance_of Berylx::Err, result
+    assert_empty fired
+  end
+
+  # ------------------------------------------------------------------
+  # C interpreter は Task#call へ委譲する (fold 無し = real 圏)。Effect を
+  # 返す body でも pure Ruby fold と同じ封筒になること。
+  # ------------------------------------------------------------------
+  def test_native_and_pure_ruby_agree_on_an_effect_returning_body
+    skip 'berylx_native is not compiled' unless Berylx::EffectTree::Native.available?
+
+    body = Berylx::Task[:native_body] do |lay|
+      Darkcore.pure(lay[:y].set(lay[:x].get + 1))
+    end
+    native = Berylx::EffectTree::Native.run_entry(body, x: 41)
+    pure = run_with(body, { x: 41 }, Berylx::EffectTree.real_handlers.dup)
+
+    assert_equal 42, native.focus[:y].get
+    assert_equal pure.focus[:y].get, native.focus[:y].get
+    assert_equal pure.class, native.class
+  end
+
+  # dry_run は副作用ゼロを保つため body を呼ばない。したがって body の
+  # Effect も列挙されない — これは仕様どおりで、列挙するには「この body は
+  # 純粋」を示す印が要る (spec: open_question task_body.dry_run_reach)。
+  def test_dry_run_still_does_not_fire_bodies
+    fired = []
+    watcher = Berylx::Task[:watch] do |lay|
+      fired << :body
+      Darkcore.pure(lay)
+    end
+    plan = Berylx::EffectTree.dry_run(watcher, x: 1)
+
+    assert_equal [:watch], plan.steps
+    assert_empty fired
+  end
+end

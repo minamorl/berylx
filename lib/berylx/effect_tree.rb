@@ -164,8 +164,27 @@ module Berylx
     end
 
     def real_task(payload)
+      run_task(payload, real_handlers)
+    end
+
+    # ----------------------------------------------------------------
+    # Task の body が Effect を返したときの畳み込み口。
+    #
+    # **自作 handler マップから Task を走らせるときはこれを使う。** body が
+    # 返した Effect をそのマップ自身で畳むので、圏の選択が Task の粒度で
+    # 止まらず body の内側まで届く (spec: berylx.task.body.effect.category =
+    # same_handler_map、berylx.aspect.reach に task_body_effect を含む)。
+    #
+    # ここを real_handlers 決め打ちにすると、retry / audit / 検証用の圏を
+    # 選んでも body に入った瞬間 real へ戻ってしまい、この pin が意味を失う。
+    # ----------------------------------------------------------------
+    def run_task(payload, handlers)
       task, focus = payload
-      task.call(focus)
+      task.call(focus) { |effect| fold_body(effect, handlers) }
+    end
+
+    def fold_body(effect, handlers)
+      Darkcore.fold(effect, on_return: ->(x) { x }, handlers: handlers)
     end
 
     def real_parallel(payload)
